@@ -9,8 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/cnlohr/ch32v003fun:latest   # ← container có sẵn toolchain
     strategy:
       fail-fast: false
       matrix:
@@ -22,11 +20,34 @@ jobs:
           - CH32V003C4U6
           # (thêm các mã chip khác nếu cần)
 
+    env:
+      TOOLCHAIN_PATH: /opt/riscv64-unknown-elf-gcc
+
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (cả submodule)
         uses: actions/checkout@v4
         with:
-          submodules: recursive   # bắt buộc nếu bạn dùng ch32v003fun như submodule
+          submodules: recursive
+
+      - name: Cache toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TOOLCHAIN_PATH }}
+          key: riscv64-unknown-elf-gcc-from-ch32v003fun-v1
+
+      - name: Install toolchain (từ script của ch32v003fun)
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          cd lib/ch32fun/ch32v003fun
+          chmod +x get_toolchain.sh
+          ./get_toolchain.sh
+          mkdir -p $TOOLCHAIN_PATH
+          tar -xf riscv64-unknown-elf-gcc-*.tar.gz -C $TOOLCHAIN_PATH --strip-components=1
+          rm riscv64-unknown-elf-gcc-*.tar.gz
+
+      - name: Set PATH
+        run: echo "$TOOLCHAIN_PATH/bin" >> $GITHUB_PATH
 
       - name: Build for ${{ matrix.board }}
         run: |
