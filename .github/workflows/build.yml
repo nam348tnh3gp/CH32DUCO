@@ -12,20 +12,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Liệt kê các dòng chip CH32V003 phổ biến (tên chính xác theo bộ linker của ch32v003fun)
         board:
           - CH32V003F4U6
           - CH32V003J4M6
           - CH32V003A4M6
           - CH32V003F4P6
           - CH32V003C4U6
-          # Thêm các biến thể khác nếu cần
+          # (thêm các mã khác nếu cần)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive   # nếu thư viện ch32v003fun là submodule
+          submodules: recursive   # nếu ch32v003fun là submodule
 
       - name: Cache RISC-V toolchain
         id: cache-toolchain
@@ -37,19 +36,22 @@ jobs:
       - name: Install RISC-V toolchain (xPack)
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
-          wget -q https://github.com/xpack-dev-tools/riscv-none-embed-gcc-xpack/releases/download/v12.2.0-1/xpack-riscv-none-embed-gcc-12.2.0-1-linux-x64.tar.gz
+          TOOLCHAIN_URL="https://github.com/xpack-dev-tools/riscv-none-embed-gcc-xpack/releases/download/v12.2.0-1/xpack-riscv-none-embed-gcc-12.2.0-1-linux-x64.tar.gz"
+          curl -L --retry 3 --fail -o riscv-toolchain.tar.gz "${TOOLCHAIN_URL}"
           sudo mkdir -p /opt/riscv-none-embed
-          sudo tar -xf xpack-riscv-none-embed-gcc-12.2.0-1-linux-x64.tar.gz -C /opt/riscv-none-embed --strip-components=1
+          sudo tar -xf riscv-toolchain.tar.gz -C /opt/riscv-none-embed --strip-components=1
           sudo chmod -R a+rX /opt/riscv-none-embed
+          rm riscv-toolchain.tar.gz
 
-      - name: Set PATH
-        run: echo "/opt/riscv-none-embed/bin" >> $GITHUB_PATH
+      - name: Set PATH and PREFIX
+        run: |
+          echo "/opt/riscv-none-embed/bin" >> $GITHUB_PATH
+          echo "RISCV_PREFIX=riscv-none-embed-" >> $GITHUB_ENV
 
       - name: Build for ${{ matrix.board }}
         run: |
-          # Dùng biến CH32V003FUN_BOARD mà ch32v003fun.mk hỗ trợ
           make clean
-          make CH32V003FUN_BOARD=${{ matrix.board }} all
+          make PREFIX=$RISCV_PREFIX CH32V003FUN_BOARD=${{ matrix.board }} all
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
