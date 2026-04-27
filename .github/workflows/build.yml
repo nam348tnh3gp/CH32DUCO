@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/cnlohr/ch32v003fun:latest   # ← container có sẵn toolchain
     strategy:
       fail-fast: false
       matrix:
@@ -18,40 +20,18 @@ jobs:
           - CH32V003A4M6
           - CH32V003F4P6
           - CH32V003C4U6
-          # (thêm các mã khác nếu cần)
+          # (thêm các mã chip khác nếu cần)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive   # nếu ch32v003fun là submodule
-
-      - name: Cache RISC-V toolchain
-        id: cache-toolchain
-        uses: actions/cache@v4
-        with:
-          path: /opt/riscv-none-embed
-          key: riscv-none-embed-gcc-12.2.0-1
-
-      - name: Install RISC-V toolchain (xPack)
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
-        run: |
-          TOOLCHAIN_URL="https://github.com/xpack-dev-tools/riscv-none-embed-gcc-xpack/releases/download/v12.2.0-1/xpack-riscv-none-embed-gcc-12.2.0-1-linux-x64.tar.gz"
-          curl -L --retry 3 --fail -o riscv-toolchain.tar.gz "${TOOLCHAIN_URL}"
-          sudo mkdir -p /opt/riscv-none-embed
-          sudo tar -xf riscv-toolchain.tar.gz -C /opt/riscv-none-embed --strip-components=1
-          sudo chmod -R a+rX /opt/riscv-none-embed
-          rm riscv-toolchain.tar.gz
-
-      - name: Set PATH and PREFIX
-        run: |
-          echo "/opt/riscv-none-embed/bin" >> $GITHUB_PATH
-          echo "RISCV_PREFIX=riscv-none-embed-" >> $GITHUB_ENV
+          submodules: recursive   # bắt buộc nếu bạn dùng ch32v003fun như submodule
 
       - name: Build for ${{ matrix.board }}
         run: |
           make clean
-          make PREFIX=$RISCV_PREFIX CH32V003FUN_BOARD=${{ matrix.board }} all
+          make CH32V003FUN_BOARD=${{ matrix.board }} all
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
