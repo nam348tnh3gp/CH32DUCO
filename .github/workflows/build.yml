@@ -39,33 +39,21 @@ jobs:
           pio platform install https://github.com/Community-PIO-CH32V/platform-ch32v.git
 
       # Build firmware bằng Makefile, tự động tìm toolchain RISC‑V
+      - name: Install Linux RISC‑V toolchain
+        run: |
+          wget -q https://github.com/Community-PIO-CH32V/toolchain-riscv-linux/releases/download/gcc12/toolchain-riscv-linux.tar.gz
+          tar xf toolchain-riscv-linux.tar.gz -C ~/.platformio/packages/
+          echo "Toolchain installed"
+
       - name: Build firmware
         run: |
-          TOOLCHAIN_DIR=$(find ~/.platformio/packages -maxdepth 1 -type d -name "toolchain-riscv*" | head -1)
-          if [ -z "$TOOLCHAIN_DIR" ]; then
-            echo "Toolchain RISC‑V not found!"
+          TOOLCHAIN_DIR=~/.platformio/packages/toolchain-riscv-linux
+          if [ ! -d "$TOOLCHAIN_DIR/bin" ]; then
+            echo "Toolchain not found at $TOOLCHAIN_DIR"
             exit 1
           fi
-          echo "Toolchain directory: $TOOLCHAIN_DIR"
-          echo "Contents of bin directory:"
-          ls -la "$TOOLCHAIN_DIR/bin/"
           export PATH="$TOOLCHAIN_DIR/bin:$PATH"
-
-          # Tìm tên gcc thực tế
-          GCC_NAME=$(ls "$TOOLCHAIN_DIR/bin/" | grep -E '^riscv.*-elf-gcc$' | head -1)
-          if [ -z "$GCC_NAME" ]; then
-            echo "No RISC‑V GCC found in $TOOLCHAIN_DIR/bin/"
-            exit 1
-          fi
-          echo "Found RISC‑V GCC: $GCC_NAME"
-          
-          # Xác định prefix (ví dụ: "riscv-none-embed-" từ "riscv-none-embed-gcc")
-          PREFIX="${GCC_NAME%gcc}"
-          echo "Using toolchain prefix: $PREFIX"
-          
-          # Tạo Makefile tạm thời với đúng prefix
-          sed -i "s/^CROSS = .*/CROSS = $PREFIX/" Makefile
-          cat Makefile | head -5
+          echo "Using toolchain at: $TOOLCHAIN_DIR"
           
           make clean
           make -j$(nproc)
