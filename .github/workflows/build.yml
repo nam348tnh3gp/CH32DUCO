@@ -55,12 +55,12 @@ jobs:
             exit 1
           fi
 
-      - name: 🔍 Verify DUCOID string
+      - name: 🔍 Verify DUCOID variable present
         run: |
-          if strings firmware.bin | grep -q "DUCOID"; then
-            echo "✅ DUCOID string found – protocol response present"
+          if riscv-none-elf-nm firmware.elf | grep -w "ducoid_chars"; then
+            echo "✅ ducoid_chars variable found – DUCOID logic present"
           else
-            echo "❌ DUCOID string missing!"
+            echo "❌ ducoid_chars variable missing – firmware may be incomplete!"
             exit 1
           fi
 
