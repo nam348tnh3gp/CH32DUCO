@@ -58,8 +58,8 @@ static inline void digitalWrite(uint8_t pin, uint8_t val) {
     else     port->BCR = pinmask;
 }
 
-// ---------- Sử dụng _millis có sẵn từ framework ----------
-extern volatile uint32_t _millis;
+// ---------- Sử dụng _millis có sẵn từ framework --------
+volatile uint32_t _millis = 0;
 
 void delay(uint32_t ms) {
     uint32_t start = _millis;
