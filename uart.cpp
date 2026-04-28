@@ -1,8 +1,6 @@
-// uart.cpp
 #include "uart.h"
-#include <Arduino.h>   // cần cho pinMode, F_CPU
+#include <stdint.h>
 
-// Các định nghĩa nội bộ – không lộ ra ngoài
 #define CH32_UART1_BASE  0x40013800UL
 
 #define UART_STATR_OFFSET  0x00
@@ -10,7 +8,6 @@
 #define UART_BRR_OFFSET    0x08
 #define UART_CTLR1_OFFSET  0x0C
 
-// Bit mask – đặt trong .cpp để tránh xung đột
 static const uint32_t CTLR1_UE  = (1 << 13);
 static const uint32_t CTLR1_TE  = (1 << 3);
 static const uint32_t CTLR1_RE  = (1 << 2);
@@ -25,18 +22,27 @@ static inline uint32_t reg_read(uint32_t offset) {
 }
 
 void UART_Init(uint32_t baudrate) {
-    // Bật clock USART1: set bit 14 trong RCC->APB2PCENR
+    // Bật clock USART1 (bit 14 của RCC->APB2PCENR)
     *(volatile uint32_t *)(0x40021018UL) |= (1 << 14);
 
-    // Cấu hình chân PD5 (TX) và PD6 (RX)
-    pinMode(PD5, OUTPUT_AF_PP);
-    pinMode(PD6, INPUT_PULLUP);
+    // Cấu hình chân PD5 (TX) và PD6 (RX) qua thanh ghi GPIOD->CFGLR
+    volatile uint32_t *gpiod_cfglr = (volatile uint32_t *)(0x40011400UL);
+    uint32_t cfglr = *gpiod_cfglr;
 
-    // Baud rate
+    // PD5: xóa bit 23-20, set = 0011 (AF push-pull, 50MHz)
+    cfglr &= ~((uint32_t)0xF << 20);
+    cfglr |= (0x3 << 20);
+
+    // PD6: xóa bit 27-24, set = 1000 (input pull-up)
+    cfglr &= ~((uint32_t)0xF << 24);
+    cfglr |= (0x8 << 24);
+
+    *gpiod_cfglr = cfglr;
+
+    // Baud rate (F_CPU được PlatformIO định nghĩa toàn cục)
     uint32_t brr = F_CPU / baudrate;
     reg_write(UART_BRR_OFFSET, brr);
 
-    // Bật UE, TE, RE
     reg_write(UART_CTLR1_OFFSET, CTLR1_UE | CTLR1_TE | CTLR1_RE);
 }
 
