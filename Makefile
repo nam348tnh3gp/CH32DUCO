@@ -8,7 +8,7 @@ SIZE    = $(CROSS)size
 
 CFLAGS   = -march=rv32ec -mabi=ilp32e -Os -Wall -I. -DCH32V003 -ffunction-sections -fdata-sections -nostdlib -fno-builtin
 CXXFLAGS = $(CFLAGS) -std=c++11 -fno-rtti -fno-exceptions
-LDFLAGS  = -T ch32v003.ld -nostartfiles -Wl,--gc-sections
+LDFLAGS = -T ch32v003.ld -nostartfiles -Wl,--gc-sections -lgcc
 
 SRCS_C   = main.c uart.c gpio.c delay.c unique_id.c system_ch32v00x.c
 SRCS_CPP = duco_hash.cpp
