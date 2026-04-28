@@ -57,9 +57,10 @@ jobs:
         shell: bash
         run: |
           echo "Checking essential symbols..."
+          # Thêm toolchain RISC‑V vào PATH
+          export PATH="$HOME/.platformio/packages/toolchain-riscv/bin:$PATH"
           for elf in .pio/build/*/firmware.elf; do
             echo "==> $(basename $(dirname $elf))"
-            # Kiểm tra setup, loop, UART_Init – nếu thiếu sẽ exit 1
             riscv-wch-elf-nm "$elf" | grep -E "setup|loop|UART_Init" || {
               echo "MISSING symbols in $elf!"
               exit 1
