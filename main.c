@@ -1,6 +1,6 @@
-// main.c – DUCO Miner NoneOS CH32V003
+// main.c – DUCO Miner NoneOS CH32V003 (hoàn chỉnh, có elapsed time)
 #include <string.h>
-#include <stdlib.h>   // <<< THÊM DÒNG NÀY
+#include <stdlib.h>
 #include "ch32v00x.h"
 #include "uart.h"
 #include "gpio.h"
@@ -8,12 +8,8 @@
 #include "unique_id.h"
 #include "duco_hash.h"
 
-void SystemInit(void);  // <<< THÊM DÒNG NÀY
+void SystemInit(void);
 
-// ... phần còn lại giữ nguyên
-
-#define SEP_TOKEN ","
-#define END_TOKEN "\n"
 typedef uint32_t uintDiff;
 
 static char ducoid_chars[23];
@@ -54,19 +50,17 @@ static void increment_nonce_ascii(char *nonceStr, uint8_t *nonceLen) {
 
 static void send_result(uintDiff result, uint32_t elapsed) {
     char buf[33]; int pos = 0;
-    // In nonce dạng nhị phân 32 bit
     for (int i = 31; i >= 0; i--)
         buf[pos++] = (result & (1UL << i)) ? '1' : '0';
     buf[pos] = '\0'; uart_puts(buf); uart_putc(',');
     
-    // In thời gian dạng nhị phân 32 bit
     pos = 0;
     for (int i = 31; i >= 0; i--)
         buf[pos++] = (elapsed & (1UL << i)) ? '1' : '0';
     buf[pos] = '\0'; uart_puts(buf); uart_putc(',');
     
     uart_puts(ducoid_chars);
-    uart_puts(END_TOKEN);
+    uart_puts("\n");
 }
 
 int main(void) {
@@ -76,10 +70,8 @@ int main(void) {
     delay_ms(2000);
 
     while (1) {
-        // Chờ dữ liệu từ UART
         if (!uart_available()) continue;
 
-        // Đọc job: lastBlockHash, newBlockHash, difficulty
         char lastBlockHash[41] = {0};
         for (int i = 0; i < 40; i++) lastBlockHash[i] = uart_getc();
         if (uart_getc() != ',') continue;
@@ -95,7 +87,6 @@ int main(void) {
             if (c == ',') break;
             diffStr[dpos++] = c;
         }
-        // Xóa buffer thừa
         while (uart_available()) uart_getc();
 
         uintDiff difficulty = strtoul(diffStr, NULL, 10);
@@ -107,6 +98,8 @@ int main(void) {
         duco_hash_state_t hash;
         duco_hash_init(&hash, lastBlockHash);
 
+        uint32_t start_time = millis();
+
         char nonceStr[11] = "0";
         uint8_t nonceLen = 1;
         uintDiff maxNonce = difficulty * 100 + 1, nonce = 0;
@@ -115,6 +108,7 @@ int main(void) {
             increment_nonce_ascii(nonceStr, &nonceLen);
         }
 
-        send_result(nonce, 0); // elapsed = 0 tạm thời
+        uint32_t elapsed = (millis() - start_time) * 1000;
+        send_result(nonce, elapsed);
     }
 }
