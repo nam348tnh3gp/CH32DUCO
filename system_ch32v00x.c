@@ -1,8 +1,11 @@
 // system_ch32v00x.c
 #include "ch32v00x.h"
 
-// Hàm khởi tạo hệ thống, được gọi đầu tiên trong main()
+uint32_t SystemCoreClock = 48000000;   // <<< THÊM DÒNG NÀY
+
 void SystemInit(void) {
+    // ... (phần còn lại giữ nguyên)
+}
     // 1. Bật HSI (High Speed Internal oscillator 8MHz)
     RCC->CTLR |= RCC_CTLR_HSION;
     while (!(RCC->CTLR & RCC_CTLR_HSIRDY)); // Chờ HSI sẵn sàng
