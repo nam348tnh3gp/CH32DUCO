@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define SHA1_HASH_LEN 20
 
 typedef struct {
@@ -15,3 +19,7 @@ bool duco_hash_try_nonce(duco_hash_state_t *hasher,
                          char const *nonce,
                          uint8_t nonceLen,
                          uint32_t const *targetWords);
+
+#ifdef __cplusplus
+}
+#endif
