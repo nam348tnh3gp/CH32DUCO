@@ -31,4 +31,7 @@ SECTIONS
         . = ALIGN(4);
         _bss_end = .;
     } > RAM
+
+    /* Stack definition */
+    _estack = ORIGIN(RAM) + LENGTH(RAM) - 4;
 }
