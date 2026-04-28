@@ -1,15 +1,16 @@
-// uart.c
+// uart.c - sửa phép chia thành hằng số
 #include "uart.h"
 #include "ch32v00x.h"
 #include "gpio.h"
 
-#define UART_BASE USART1_BASE
+// BRR = 48MHz / 115200 = 416.67 -> 416 (lỗi < 0.2%)
+#define USART_BRR_115200_48MHZ 416
 
 void uart_init(uint32_t baud) {
     RCC->APB2PCENR |= RCC_APB2Periph_GPIOD | RCC_APB2Periph_USART1;
     gpio_set_mode(PD5, GPIO_AF_PP_50MHz);
     gpio_set_mode(PD6, GPIO_IN_PU);
-    USART1->BRR = 48000000 / baud;
+    USART1->BRR = USART_BRR_115200_48MHZ;
     USART1->CTLR1 = USART_CTLR1_UE | USART_CTLR1_TE | USART_CTLR1_RE;
 }
 void uart_putc(char c) {
