@@ -41,27 +41,32 @@ jobs:
       # Build firmware bằng Makefile, tự động tìm toolchain RISC‑V
       - name: Build firmware
         run: |
-          # Tìm thư mục chứa toolchain RISC‑V (có thể là toolchain-riscv hoặc toolchain-riscv-windows)
           TOOLCHAIN_DIR=$(find ~/.platformio/packages -maxdepth 1 -type d -name "toolchain-riscv*" | head -1)
           if [ -z "$TOOLCHAIN_DIR" ]; then
             echo "Toolchain RISC‑V not found!"
             exit 1
           fi
-          echo "Using toolchain at: $TOOLCHAIN_DIR"
+          echo "Toolchain directory: $TOOLCHAIN_DIR"
+          echo "Contents of bin directory:"
+          ls -la "$TOOLCHAIN_DIR/bin/"
           export PATH="$TOOLCHAIN_DIR/bin:$PATH"
 
-          # Kiểm tra trình biên dịch
-          if ! command -v riscv-wch-elf-gcc &> /dev/null; then
-            # Thử tên khác (ví dụ riscv-none-elf-gcc)
-            if command -v riscv-none-elf-gcc &> /dev/null; then
-              echo "Found riscv-none-elf-gcc, adjusting Makefile..."
-              sed -i 's/riscv-wch-elf-/riscv-none-elf-/g' Makefile
-            else
-              echo "No RISC‑V compiler found!"
-              exit 1
-            fi
+          # Tìm tên gcc thực tế
+          GCC_NAME=$(ls "$TOOLCHAIN_DIR/bin/" | grep -E '^riscv.*-elf-gcc$' | head -1)
+          if [ -z "$GCC_NAME" ]; then
+            echo "No RISC‑V GCC found in $TOOLCHAIN_DIR/bin/"
+            exit 1
           fi
-
+          echo "Found RISC‑V GCC: $GCC_NAME"
+          
+          # Xác định prefix (ví dụ: "riscv-none-embed-" từ "riscv-none-embed-gcc")
+          PREFIX="${GCC_NAME%gcc}"
+          echo "Using toolchain prefix: $PREFIX"
+          
+          # Tạo Makefile tạm thời với đúng prefix
+          sed -i "s/^CROSS = .*/CROSS = $PREFIX/" Makefile
+          cat Makefile | head -5
+          
           make clean
           make -j$(nproc)
 
