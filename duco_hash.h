@@ -1,6 +1,5 @@
 #pragma once
-
-#include <Arduino.h>
+#include <stdint.h>   // chỉ cần stdint
 
 #define SHA1_HASH_LEN 20
 
@@ -10,7 +9,6 @@ struct duco_hash_state_t {
 };
 
 void duco_hash_init(duco_hash_state_t *hasher, char const *prevHash);
-
 bool duco_hash_try_nonce(duco_hash_state_t *hasher,
                          char const *nonce,
                          uint8_t nonceLen,
