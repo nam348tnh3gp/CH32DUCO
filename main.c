@@ -1,11 +1,16 @@
 // main.c – DUCO Miner NoneOS CH32V003
 #include <string.h>
+#include <stdlib.h>   // <<< THÊM DÒNG NÀY
 #include "ch32v00x.h"
 #include "uart.h"
 #include "gpio.h"
 #include "delay.h"
 #include "unique_id.h"
 #include "duco_hash.h"
+
+void SystemInit(void);  // <<< THÊM DÒNG NÀY
+
+// ... phần còn lại giữ nguyên
 
 #define SEP_TOKEN ","
 #define END_TOKEN "\n"
