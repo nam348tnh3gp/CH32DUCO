@@ -1,95 +1,96 @@
+/*
+   ____  __  __  ____  _  _  _____       ___  _____  ____  _  _
+  (  _ \(  )(  )(_  _)( \( )(  _  )___  / __)(  _  )(_  _)( \( )
+   )(_) ))(__)(  _)(_  )  (  )(_)((___)( (__  )(_)(  _)(_  )  (
+  (____/(______)(____)(_)\_)(_____)     \___)(_____)(____)(_)\_)
+  Official code for Arduino boards (and relatives)   version 4.3
+  Duino-Coin Team & Community 2019-2024 © MIT Licensed
+  Ported to CH32V003 - Bare-metal USART (no Arduino Serial)
+*/
+
+#pragma GCC optimize ("-Ofast")
+
+#include <stdint.h>
+
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 13
+#endif
+
+#define SEP_TOKEN ","
+#define END_TOKEN "\n"
+
+typedef uint32_t uintDiff;
+
+#include <string.h>
+#include "duco_hash.h"
 #include "ch32v003fun.h"
 #include "kcdk_usart.h"
-#include "duco_hash.h"
-#include <string.h>
 
-// -------------------------------------------------------------------
-// USART context (used by kcdk_usart and ISR)
-static kcdk_usart_context my_context;
+// ======================== USART Context & ISR ========================
+kcdk_usart_context my_context = { 0 };
 
-// -------------------------------------------------------------------
-// Microsecond timer using TIM2 (1 MHz, 16‑bit auto‑reload)
-volatile uint32_t overflow_count = 0;
-
-void TIM2_Init(void) {
-    RCC->APB1PCENR |= RCC_APB1Periph_TIM2;
-    TIM2->PSC = 47;                     // 48MHz/(47+1) = 1 MHz -> 1 µs
-    TIM2->ATRLR = 0xFFFF;               // max 65535
-    TIM2->CNT = 0;
-    TIM2->DMAINTENR |= TIM_IT_Update;   // enable update interrupt
-    NVIC_EnableIRQ(TIM2_IRQn);
-    TIM2->CTLR1 |= TIM_CEN;
-}
-
-uint32_t micros(void) {
-    __disable_irq();
-    if (TIM2->INTFR & TIM_IT_Update) {
-        TIM2->INTFR &= ~TIM_IT_Update;
-        overflow_count++;
-    }
-    uint32_t ov = overflow_count;
-    uint32_t cnt = TIM2->CNT;
-    __enable_irq();
-    return (ov * 65536UL) + cnt;
-}
-
-void TIM2_IRQHandler(void) __attribute__((interrupt));
-void TIM2_IRQHandler(void) {
-    if (TIM2->INTFR & TIM_IT_Update) {
-        TIM2->INTFR &= ~TIM_IT_Update;
-        overflow_count++;
+void USART1_IRQHandler(void) __attribute__((interrupt));
+void USART1_IRQHandler(void) {
+    if (USART1->STATR & USART_STATR_RXNE) {
+        uint8_t data = (uint8_t)(USART1->DATAR & 0xFF);
+        my_context.buffer[my_context.head] = data;
+        my_context.head = (my_context.head + 1) % KCDK_USART_BUFFER_SIZE;
+        if (my_context.available < KCDK_USART_BUFFER_SIZE)
+            my_context.available++;
+        else
+            my_context.tail = (my_context.tail + 1) % KCDK_USART_BUFFER_SIZE;
     }
 }
 
-// -------------------------------------------------------------------
-// DUCOID from 64‑bit unique ID (0x1FFFF7E8)
-static char ducoid_chars[23];  // "DUCOID" + 16 hex + '\0'
+// ======================== Unique ID (CH32V003 ESIG) ========================
+static char ducoid_chars[23];
 
-static void generate_ducoid(void) {
+static void generate_ducoid() {
     memcpy(ducoid_chars, "DUCOID", 6);
-    uint8_t *uid = (uint8_t *)0x1FFFF7E8;   // 8 bytes unique ID
-    char *ptr = ducoid_chars + 6;
-    for (int i = 0; i < 8; i++) {
+    uint8_t* uid = (uint8_t*)0x1FFFF7E8;
+    char* ptr = ducoid_chars + 6;
+    for (uint8_t i = 0; i < 8; i++) {
         uint8_t val = uid[i];
         *ptr++ = "0123456789ABCDEF"[val >> 4];
-        *ptr++ = "0123456789ABCDEF"[val & 0xF];
+        *ptr++ = "0123456789ABCDEF"[val & 0x0F];
     }
     *ptr = '\0';
 }
 
-// -------------------------------------------------------------------
-// Helpers
-static void hex_to_words(const char *hex, uint32_t *words) {
-    for (int w = 0; w < 5; w++) {
-        const char *src = hex + w * 8;
-        uint32_t b0 = ((src[0] >= 'a' ? src[0]-'a'+10 : src[0]-'0') << 4) |
-                      (src[1] >= 'a' ? src[1]-'a'+10 : src[1]-'0');
-        uint32_t b1 = ((src[2] >= 'a' ? src[2]-'a'+10 : src[2]-'0') << 4) |
-                      (src[3] >= 'a' ? src[3]-'a'+10 : src[3]-'0');
-        uint32_t b2 = ((src[4] >= 'a' ? src[4]-'a'+10 : src[4]-'0') << 4) |
-                      (src[5] >= 'a' ? src[5]-'a'+10 : src[5]-'0');
-        uint32_t b3 = ((src[6] >= 'a' ? src[6]-'a'+10 : src[6]-'0') << 4) |
-                      (src[7] >= 'a' ? src[7]-'a'+10 : src[7]-'0');
+// ======================== Helpers ========================
+#define HEX_NIBBLE(c) (((c) - '0' < 10) ? ((c) - '0') : ((c) - 'a' + 10))
+
+static void hex_to_words(const char* hex, uint32_t* words) {
+    for (uint8_t w = 0; w < SHA1_HASH_LEN / 4; w++) {
+        const char* src = hex + w * 8;
+        uint32_t b0 = (HEX_NIBBLE(src[0]) << 4) | HEX_NIBBLE(src[1]);
+        uint32_t b1 = (HEX_NIBBLE(src[2]) << 4) | HEX_NIBBLE(src[3]);
+        uint32_t b2 = (HEX_NIBBLE(src[4]) << 4) | HEX_NIBBLE(src[5]);
+        uint32_t b3 = (HEX_NIBBLE(src[6]) << 4) | HEX_NIBBLE(src[7]);
         words[w] = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
     }
 }
 
-static void increment_nonce_ascii(char *nonceStr, uint8_t *nonceLen) {
+static void increment_nonce_ascii(char* nonceStr, uint8_t* nonceLen) {
     int8_t i = *nonceLen - 1;
     for (; i >= 0; --i) {
-        if (nonceStr[i] != '9') { nonceStr[i]++; return; }
+        if (nonceStr[i] != '9') {
+            nonceStr[i]++;
+            return;
+        }
         nonceStr[i] = '0';
     }
-    for (uint8_t j = *nonceLen; j > 0; --j) nonceStr[j] = nonceStr[j-1];
+    for (uint8_t j = *nonceLen; j > 0; --j)
+        nonceStr[j] = nonceStr[j - 1];
     nonceStr[0] = '1';
     (*nonceLen)++;
     nonceStr[*nonceLen] = '\0';
 }
 
-static uint32_t ducos1a_mine(const char *prevBlockHash,
-                             const uint32_t *targetWords,
+static uint32_t ducos1a_mine(const char* prevBlockHash,
+                             const uint32_t* targetWords,
                              uint32_t maxNonce) {
-    duco_hash_state_t hash;
+    static duco_hash_state_t hash;
     duco_hash_init(&hash, prevBlockHash);
 
     char nonceStr[11] = "0";
@@ -103,7 +104,45 @@ static uint32_t ducos1a_mine(const char *prevBlockHash,
     return 0;
 }
 
-static void uint32_to_binary_string(uint32_t val, char *buf) {
+// ======================== kcdk_usart helpers ========================
+
+// Đọc 1 byte từ buffer vòng (có timeout đơn giản)
+static int usart_read_byte_timeout(uint32_t timeout_us) {
+    uint32_t start = micros();
+    while (my_context.available == 0) {
+        if (micros() - start > timeout_us) return -1;
+    }
+    uint8_t c = my_context.buffer[my_context.tail];
+    my_context.tail = (my_context.tail + 1) % KCDK_USART_BUFFER_SIZE;
+    my_context.available--;
+    return c;
+}
+
+// Đọc cho đến khi gặp dấu ',' hoặc timeout
+static int usart_read_until(char* buf, int max_len, char delim, uint32_t timeout_us) {
+    int i = 0;
+    while (i < max_len - 1) {
+        int c = usart_read_byte_timeout(timeout_us);
+        if (c < 0) return -1;
+        if (c == delim) {
+            buf[i] = '\0';
+            return i;
+        }
+        buf[i++] = (char)c;
+    }
+    buf[i] = '\0';
+    return i;
+}
+
+// Đọc 1 dòng (kết thúc bằng '\n')
+static int usart_read_line(char* buf, int max_len, uint32_t timeout_us) {
+    int len = usart_read_until(buf, max_len, '\n', timeout_us);
+    if (len > 0 && buf[len - 1] == '\r') buf[len - 1] = '\0';
+    return len;
+}
+
+// Chuyển uint32 sang chuỗi nhị phân tối giản
+static void uint32_to_bin_str(uint32_t val, char* buf) {
     if (val == 0) { buf[0] = '0'; buf[1] = '\0'; return; }
     uint32_t mask = 1UL << 31;
     while (mask && ((val & mask) == 0)) mask >>= 1;
@@ -112,75 +151,49 @@ static void uint32_to_binary_string(uint32_t val, char *buf) {
     buf[i] = '\0';
 }
 
-static void send_result(uint32_t nonce, uint32_t elapsed_us,
-                        const char *ducoid) {
+// Gửi kết quả: nonce,thời gian,DUCOID\n
+static void send_result(uint32_t nonce, uint32_t elapsed_us) {
     char buf[64];
-    uint32_to_binary_string(nonce, buf);
+
+    uint32_to_bin_str(nonce, buf);
     kcdk_usart_write((uint8_t*)buf, strlen(buf));
-    kcdk_usart_write((uint8_t*)",", 1);
-    uint32_to_binary_string(elapsed_us, buf);
+    kcdk_usart_write((uint8_t*)SEP_TOKEN, 1);
+
+    uint32_to_bin_str(elapsed_us, buf);
     kcdk_usart_write((uint8_t*)buf, strlen(buf));
-    kcdk_usart_write((uint8_t*)",", 1);
-    kcdk_usart_write((uint8_t*)ducoid, strlen(ducoid));
-    kcdk_usart_write((uint8_t*)"\n", 1);
+    kcdk_usart_write((uint8_t*)SEP_TOKEN, 1);
+
+    kcdk_usart_write((uint8_t*)ducoid_chars, strlen(ducoid_chars));
+    kcdk_usart_write((uint8_t*)END_TOKEN, 1);
 }
 
-static int read_line(char *buf, int max_len) {
-    int i = 0;
-    uint32_t start_wait = 0;
-    int waiting = 0;
-    while (i < max_len - 1) {
-        if (my_context.available > 0) {
-            char c = kcdk_usart_read(&my_context);
-            if (c == '\n') { buf[i] = '\0'; return i; }
-            buf[i++] = c;
-            waiting = 0;
-        } else {
-            if (!waiting) { waiting = 1; start_wait = micros(); }
-            else if ((micros() - start_wait) > 2000000UL) return -1;
-            __WFI();
-        }
-    }
-    return -1;
-}
+// ======================== Arduino entry points ========================
 
-// -------------------------------------------------------------------
-// USART interrupt handler (RX only)
-void USART1_IRQHandler(void) __attribute__((interrupt));
-void USART1_IRQHandler(void) {
-    if (USART1->STATR & USART_STATR_RXNE) {
-        uint8_t data = (uint8_t)(USART1->DATAR & 0xFF);
-        my_context.buffer[my_context.head++] = data;
-        if (my_context.head >= KCDK_USART_BUFFER_SIZE)
-            my_context.head = 0;
-        if (my_context.available < KCDK_USART_BUFFER_SIZE)
-            my_context.available++;
-        else
-            my_context.tail = (my_context.tail + 1) % KCDK_USART_BUFFER_SIZE;
-    }
-}
-
-// -------------------------------------------------------------------
-// Arduino setup & loop (thay cho main)
 void setup() {
     SystemInit();
     kcdk_usart_init();
-    TIM2_Init();
+
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);   // LED tắt (mặc định)
+
     generate_ducoid();
 }
 
 void loop() {
     char line[101];
-    int len = read_line(line, sizeof(line));
+
+    // Đọc dòng lệnh từ USART
+    int len = usart_read_line(line, sizeof(line), 2000000UL);
     if (len <= 0) {
         kcdk_usart_write((uint8_t*)"ERR\n", 4);
         return;
     }
 
-    char *saveptr;
-    char *lastHash = strtok_r(line, ",", &saveptr);
-    char *newHash  = strtok_r(NULL, ",", &saveptr);
-    char *diffStr  = strtok_r(NULL, ",", &saveptr);
+    // Tách: lastBlockHash,newBlockHash,difficulty
+    char* saveptr;
+    char* lastHash = strtok_r(line, ",", &saveptr);
+    char* newHash  = strtok_r(NULL, ",", &saveptr);
+    char* diffStr  = strtok_r(NULL, ",", &saveptr);
 
     if (!lastHash || !newHash || !diffStr ||
         strlen(lastHash) != 40 || strlen(newHash) != 40) {
@@ -189,25 +202,34 @@ void loop() {
     }
 
     uint32_t difficulty = 0;
-    for (char *p = diffStr; *p; p++) {
+    for (char* p = diffStr; *p; p++) {
         if (*p < '0' || *p > '9') { difficulty = 0; break; }
         difficulty = difficulty * 10 + (*p - '0');
     }
-    if (difficulty == 0) { kcdk_usart_write((uint8_t*)"ERR\n", 4); return; }
+    if (difficulty == 0) {
+        kcdk_usart_write((uint8_t*)"ERR\n", 4);
+        return;
+    }
 
     uint32_t targetWords[5];
     hex_to_words(newHash, targetWords);
     uint32_t maxNonce = difficulty * 100 + 1;
 
-    // Tắt ngắt USART trong lúc đào để đo thời gian chính xác
-    USART1->CTLR1 &= ~USART_CTLR1_RXNEIE;
+    // LED ON (đang mine)
+    digitalWrite(LED_BUILTIN, LOW);
+
     uint32_t t0 = micros();
     uint32_t result = ducos1a_mine(lastHash, targetWords, maxNonce);
     uint32_t elapsed = micros() - t0;
-    USART1->CTLR1 |= USART_CTLR1_RXNEIE;
 
-    // Dọn buffer USART thừa (nếu có)
-    while (my_context.available) kcdk_usart_read(&my_context);
+    // LED OFF (xong)
+    digitalWrite(LED_BUILTIN, HIGH);
 
-    send_result(result, elapsed, ducoid_chars);
+    // Dọn buffer USART thừa
+    while (my_context.available) {
+        my_context.tail = (my_context.tail + 1) % KCDK_USART_BUFFER_SIZE;
+        my_context.available--;
+    }
+
+    send_result(result, elapsed);
 }
