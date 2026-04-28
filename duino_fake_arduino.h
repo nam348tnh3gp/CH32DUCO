@@ -58,13 +58,18 @@ static inline void digitalWrite(uint8_t pin, uint8_t val) {
     else     port->BCR = pinmask;
 }
 
-// ---------- Sử dụng _millis có sẵn từ framework --------
-volatile uint32_t _millis = 0;
-
-void delay(uint32_t ms) {
-    uint32_t start = _millis;
-    while ((_millis - start) < ms);
+// ---------- DELAY DÙNG NOP (không phụ thuộc SysTick) ----------
+static inline void delay(uint32_t ms) {
+    // 48MHz: mỗi vòng lặp ~3 chu kỳ, cần 16000 vòng cho 1ms
+    for (uint32_t i = 0; i < ms; i++) {
+        for (volatile uint32_t j = 0; j < 16000; j++) {
+            __NOP();
+        }
+    }
 }
+
+// millis/micros dùng biến đếm thô (đủ cho miner hoạt động)
+volatile uint32_t _millis = 0;
 
 uint32_t millis(void) {
     return _millis;
