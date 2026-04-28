@@ -1,6 +1,7 @@
 // CH32.cpp – DUCO Miner for CH32V003 (không phụ thuộc Arduino.h)
 #pragma GCC optimize ("-Ofast")
-#include "duino_fake_arduino.h"   // include đầu tiên để cung cấp pinMode, millis...
+#include <cstring>
+#include "duino_fake_arduino.h"
 #include "uart.h"
 #include "uniqueID.h"
 #include "duco_hash.h"
@@ -10,10 +11,8 @@
 
 typedef uint32_t uintDiff;
 
-// Biến toàn cục cho millis (cập nhật bởi SysTick_Handler)
 volatile uint32_t _millis_tick = 0;
 
-// SysTick_Handler được framework gọi
 extern "C" void SysTick_Handler(void) {
     _millis_tick++;
 }
@@ -60,7 +59,6 @@ static void increment_nonce_ascii(char* nonceStr, uint8_t* nonceLen) {
     nonceStr[*nonceLen] = '\0';
 }
 
-// Forward declaration
 uintDiff ducos1a_mine(const char* prevBlockHash, const uint32_t* targetWords, uintDiff maxNonce);
 
 uintDiff ducos1a(const char* prevBlockHash, const char* targetBlockHash, uintDiff difficulty) {
