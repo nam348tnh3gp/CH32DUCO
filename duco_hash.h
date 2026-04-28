@@ -1,5 +1,5 @@
 #pragma once
-#include <stdint.h>   // chỉ cần stdint
+#include <stdint.h>
 
 #define SHA1_HASH_LEN 20
 
