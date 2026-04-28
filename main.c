@@ -48,50 +48,68 @@ static void increment_nonce_ascii(char *nonceStr, uint8_t *nonceLen) {
 }
 
 static void send_result(uintDiff result, uint32_t elapsed) {
-    char buf[11]; int pos = 0;
+    char buf[33]; int pos = 0;
+    // In nonce dạng nhị phân 32 bit
     for (int i = 31; i >= 0; i--)
         buf[pos++] = (result & (1UL << i)) ? '1' : '0';
     buf[pos] = '\0'; uart_puts(buf); uart_putc(',');
+    
+    // In thời gian dạng nhị phân 32 bit
     pos = 0;
     for (int i = 31; i >= 0; i--)
         buf[pos++] = (elapsed & (1UL << i)) ? '1' : '0';
     buf[pos] = '\0'; uart_puts(buf); uart_putc(',');
-    uart_puts(ducoid_chars); uart_puts(END_TOKEN);
+    
+    uart_puts(ducoid_chars);
+    uart_puts(END_TOKEN);
 }
 
 int main(void) {
     SystemInit();
     uart_init(115200);
     generate_ducoid();
-    delay_ms(100);
+    delay_ms(2000);
 
     while (1) {
+        // Chờ dữ liệu từ UART
         if (!uart_available()) continue;
-        char lastBlockHash[41] = {0}, newBlockHash[41] = {0};
+
+        // Đọc job: lastBlockHash, newBlockHash, difficulty
+        char lastBlockHash[41] = {0};
         for (int i = 0; i < 40; i++) lastBlockHash[i] = uart_getc();
         if (uart_getc() != ',') continue;
+
+        char newBlockHash[41] = {0};
         for (int i = 0; i < 40; i++) newBlockHash[i] = uart_getc();
         if (uart_getc() != ',') continue;
-        char diffStr[16] = {0}; int dpos = 0;
-        while (1) { char c = uart_getc(); if (c == ',') break; diffStr[dpos++] = c; }
-        uintDiff difficulty = 0;
-        for (char *p = diffStr; *p; p++) difficulty = difficulty * 10 + (*p - '0');
+
+        char diffStr[16] = {0};
+        int dpos = 0;
+        while (1) {
+            char c = uart_getc();
+            if (c == ',') break;
+            diffStr[dpos++] = c;
+        }
+        // Xóa buffer thừa
         while (uart_available()) uart_getc();
 
-        uint32_t targetWords[5];
+        uintDiff difficulty = strtoul(diffStr, NULL, 10);
+        if (difficulty == 0) difficulty = 10;
+
+        uint32_t targetWords[SHA1_HASH_LEN / 4];
         hex_to_words(newBlockHash, targetWords);
 
         duco_hash_state_t hash;
         duco_hash_init(&hash, lastBlockHash);
 
-        char nonceStr[11] = "0"; uint8_t nonceLen = 1;
+        char nonceStr[11] = "0";
+        uint8_t nonceLen = 1;
         uintDiff maxNonce = difficulty * 100 + 1, nonce = 0;
         for (; nonce < maxNonce; nonce++) {
             if (duco_hash_try_nonce(&hash, nonceStr, nonceLen, targetWords)) break;
             increment_nonce_ascii(nonceStr, &nonceLen);
         }
 
-        uint32_t start = 0; // sử dụng timer nếu cần đo elapsed
-        send_result(nonce, start);
+        send_result(nonce, 0); // elapsed = 0 tạm thời
     }
 }
