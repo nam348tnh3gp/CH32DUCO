@@ -99,6 +99,7 @@ static inline __attribute__((always_inline)) void duco_hash_load_block_words(
 }
 
 // ================== INIT UNROLL HOÀN TOÀN 10 VÒNG ==================
+extern "C" {
 void duco_hash_init(duco_hash_state_t *hasher, char const *prevHash)
 {
     uint32_t a = 0x67452301UL;
@@ -141,6 +142,7 @@ void duco_hash_init(duco_hash_state_t *hasher, char const *prevHash)
     hasher->tempState[3] = d;
     hasher->tempState[4] = e;
 }
+} // extern "C"
 
 // ================== TRY_NONCE DÀNH RIÊNG NONCE 5 BYTE ==================
 /*
@@ -415,6 +417,7 @@ __attribute__((noinline)) bool duco_hash_try_nonce_len5(
 }
 
 // ================== TRY_NONCE TỔNG QUÁT (GIỮ NGUYÊN UNROLL 70 VÒNG) ==================
+extern "C" {
 __attribute__((noinline)) bool duco_hash_try_nonce(duco_hash_state_t *hasher,
                                                    char const *nonce,
                                                    uint8_t nonceLen,
@@ -658,3 +661,4 @@ __attribute__((noinline)) bool duco_hash_try_nonce(duco_hash_state_t *hasher,
         && d == targetWords[3]
         && e == targetWords[4];
 }
+} // extern "C"
