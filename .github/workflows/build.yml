@@ -41,9 +41,10 @@ jobs:
       # Build firmware bằng Makefile, tự động tìm toolchain RISC‑V
       - name: Install Linux RISC‑V toolchain
         run: |
-          wget -q https://github.com/Community-PIO-CH32V/toolchain-riscv-linux/releases/download/gcc12/toolchain-riscv-linux.tar.gz
-          tar xf toolchain-riscv-linux.tar.gz -C ~/.platformio/packages/
-          echo "Toolchain installed"
+          wget -q https://github.com/Community-PIO-CH32V/toolchain-riscv-linux/releases/download/1.120200.220829/toolchain-riscv-linux.tar.gz
+          mkdir -p ~/.platformio/packages/toolchain-riscv
+          tar xf toolchain-riscv-linux.tar.gz -C ~/.platformio/packages/toolchain-riscv
+          echo "Toolchain installed successfully"
 
       - name: Build firmware
         run: |
