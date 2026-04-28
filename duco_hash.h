@@ -1,6 +1,7 @@
 // duco_hash.h
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>   // <<< THÊM DÒNG NÀY
 
 #define SHA1_HASH_LEN 20
 
