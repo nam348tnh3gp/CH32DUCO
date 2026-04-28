@@ -1,4 +1,4 @@
-TOOLCHAIN=riscv-none-elf
+CROSS ?= riscv-wch-elf-
 CC=$(TOOLCHAIN)-gcc
 AS=$(TOOLCHAIN)-as
 LD=$(TOOLCHAIN)-ld
