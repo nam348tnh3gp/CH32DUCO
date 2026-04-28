@@ -1,5 +1,4 @@
-# Makefile for CH32V003 NoneOS DUCO Miner
-CROSS = riscv-wch-elf-
+CROSS = riscv-none-elf-
 CC    = $(CROSS)gcc
 CXX   = $(CROSS)g++
 AS    = $(CROSS)as
