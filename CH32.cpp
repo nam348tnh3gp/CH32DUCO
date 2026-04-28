@@ -1,4 +1,4 @@
-// CH32.cpp – DUCO Miner for CH32V003 (không phụ thuộc Arduino.h)
+// CH32.cpp – DUCO Miner for CH32V003
 #pragma GCC optimize ("-Ofast")
 #include <cstring>
 #include "duino_fake_arduino.h"
@@ -10,12 +10,6 @@
 #include "duitoa_print.h"
 
 typedef uint32_t uintDiff;
-
-volatile uint32_t _millis_tick = 0;
-
-extern "C" void SysTick_Handler(void) {
-    _millis_tick++;
-}
 
 static char ducoid_chars[23];
 
