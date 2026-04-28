@@ -6,15 +6,35 @@
 extern "C" {
 #endif
 
-/* ========== Base addresses ========== */
+/* ========== Pin definitions ========== */
+#define PD0 0
+#define PD1 1
+#define PD2 2
+#define PD3 3
+#define PD4 4
+#define PD5 5
+#define PD6 6
+#define PD7 7
+#define PC0 8
+#define PC1 9
+#define PC2 10
+#define PC3 11
+#define PC4 12
+#define PC5 13
+#define PC6 14
+#define PC7 15
+
+/* ========== Base addresses (giữ nguyên) ========== */
 #define PERIPH_BASE        0x40000000UL
 #define APB2PERIPH_BASE    (PERIPH_BASE + 0x10000UL)
-
 #define RCC_BASE           (APB2PERIPH_BASE + 0x1000UL)
 #define GPIOD_BASE         (APB2PERIPH_BASE + 0x1400UL)
 #define GPIOC_BASE         (APB2PERIPH_BASE + 0x0800UL)
 #define USART1_BASE        (APB2PERIPH_BASE + 0x3800UL)
 #define FLASH_BASE         (0x40022000UL)
+
+/* ========== Phần còn lại giữ nguyên ========== */
+// ... (RCC, GPIO, USART, FLASH structs and macros)
 
 /* ========== RCC ========== */
 typedef struct {
