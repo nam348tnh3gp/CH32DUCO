@@ -8,6 +8,7 @@
 #include "duino_miner_config.h"
 #include "duino_job_io.h"
 #include "duitoa_print.h"
+typedef uint32_t uintDiff;
 
 // LED built‑in được định nghĩa trong duino_miner_config.h
 
