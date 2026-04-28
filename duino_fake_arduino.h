@@ -26,32 +26,27 @@
 #define PC7 15
 
 static inline void pinMode(uint8_t pin, uint8_t mode) {
-    // Bật clock cho cổng tương ứng
-    if (pin < 8) {
-        RCC->APB2PCENR |= (1 << 4); // GPIOD
-    } else {
-        RCC->APB2PCENR |= (1 << 2); // GPIOC
-    }
+    if (pin < 8) RCC->APB2PCENR |= (1 << 4); // GPIOD
+    else         RCC->APB2PCENR |= (1 << 2); // GPIOC
 
     GPIO_TypeDef *port = (pin < 8) ? GPIOD : GPIOC;
-    uint8_t pinpos = pin % 8;
+    uint8_t pos = pin % 8;
     uint32_t cfglr = port->CFGLR;
-    cfglr &= ~((uint32_t)0xF << (4 * pinpos));
-    cfglr |= (mode == OUTPUT) ? (0x3 << (4 * pinpos)) : (0x8 << (4 * pinpos));
+    cfglr &= ~((uint32_t)0xF << (4 * pos));
+    cfglr |= (mode == OUTPUT) ? (0x3 << (4 * pos)) : (0x8 << (4 * pos));
     port->CFGLR = cfglr;
 }
 
 static inline void digitalWrite(uint8_t pin, uint8_t val) {
     GPIO_TypeDef *port = (pin < 8) ? GPIOD : GPIOC;
-    uint16_t pinmask = (pin < 8) ? (1 << pin) : (1 << (pin - 8));
-    if (val) port->BSHR = pinmask;
-    else port->BCR = pinmask;
+    uint16_t mask = (pin < 8) ? (1 << pin) : (1 << (pin - 8));
+    if (val) port->BSHR = mask;
+    else     port->BCR = mask;
 }
 
 static inline void delay(uint32_t ms) {
-    for (uint32_t i = 0; i < ms; i++) {
+    for (uint32_t i = 0; i < ms; i++)
         for (volatile uint32_t j = 0; j < 16000; j++) __NOP();
-    }
 }
 
 static inline uint32_t millis(void) { return 0; }
