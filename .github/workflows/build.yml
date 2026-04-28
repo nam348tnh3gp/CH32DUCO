@@ -38,14 +38,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
-      # Bước mới: tự động copy source code vào src/
       - name: Prepare source code (copy to src/)
         shell: bash
         run: |
           echo "==> Creating src/ directory"
           mkdir -p src
           echo "==> Copying source files from root to src/"
-          # Copy tất cả các file .ino, .cpp, .c, .h, .hpp, .S (các file nguồn/header)
           for ext in ino cpp c h hpp S; do
             find . -maxdepth 1 -type f -name "*.${ext}" -exec cp {} src/ \;
           done
@@ -53,8 +51,21 @@ jobs:
           ls -la src/
 
       - name: Build all environments
+        run: pio run
+
+      - name: Verify firmware symbols
+        shell: bash
         run: |
-          pio run
+          echo "Checking essential symbols..."
+          for elf in .pio/build/*/firmware.elf; do
+            echo "==> $(basename $(dirname $elf))"
+            # Kiểm tra setup, loop, UART_Init – nếu thiếu sẽ exit 1
+            riscv-wch-elf-nm "$elf" | grep -E "setup|loop|UART_Init" || {
+              echo "MISSING symbols in $elf!"
+              exit 1
+            }
+          done
+          echo "All symbols OK"
 
       - name: Organize firmware per board
         shell: bash
