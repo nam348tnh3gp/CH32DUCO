@@ -1,4 +1,4 @@
-// main.c – DUCO Miner NoneOS CH32V003 (hoàn chỉnh, có elapsed time)
+// main.c – DUCO Miner NoneOS CH32V003 (thời gian thật, đầy đủ)
 #include <string.h>
 #include <stdlib.h>
 #include "ch32v00x.h"
@@ -65,9 +65,10 @@ static void send_result(uintDiff result, uint32_t elapsed) {
 
 int main(void) {
     SystemInit();
+    delay_init();          // Khởi tạo TIM2 cho millis chính xác
     uart_init(115200);
     generate_ducoid();
-    delay_ms(2000);
+    delay_ms(2000);        // Lúc này system_tick đã chạy
 
     while (1) {
         if (!uart_available()) continue;
