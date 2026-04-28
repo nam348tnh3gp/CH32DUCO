@@ -161,55 +161,53 @@ void USART1_IRQHandler(void) {
 }
 
 // -------------------------------------------------------------------
-// Main
-int main(void) {
+// Arduino setup & loop (thay cho main)
+void setup() {
     SystemInit();
     kcdk_usart_init();
     TIM2_Init();
     generate_ducoid();
+}
 
+void loop() {
     char line[101];
-    while (1) {
-        int len = read_line(line, sizeof(line));
-        if (len <= 0) {
-            kcdk_usart_write((uint8_t*)"ERR\n", 4);
-            continue;
-        }
-
-        char *saveptr;
-        char *lastHash = strtok_r(line, ",", &saveptr);
-        char *newHash  = strtok_r(NULL, ",", &saveptr);
-        char *diffStr  = strtok_r(NULL, ",", &saveptr);
-
-        if (!lastHash || !newHash || !diffStr ||
-            strlen(lastHash) != 40 || strlen(newHash) != 40) {
-            kcdk_usart_write((uint8_t*)"ERR\n", 4);
-            continue;
-        }
-
-        uint32_t difficulty = 0;
-        for (char *p = diffStr; *p; p++) {
-            if (*p < '0' || *p > '9') { difficulty = 0; break; }
-            difficulty = difficulty * 10 + (*p - '0');
-        }
-        if (difficulty == 0) { kcdk_usart_write((uint8_t*)"ERR\n", 4); continue; }
-
-        uint32_t targetWords[5];
-        hex_to_words(newHash, targetWords);
-        uint32_t maxNonce = difficulty * 100 + 1;
-
-        // Tắt ngắt USART trong lúc đào để đo thời gian chính xác
-        USART1->CTLR1 &= ~USART_CTLR1_RXNEIE;
-        uint32_t t0 = micros();
-        uint32_t result = ducos1a_mine(lastHash, targetWords, maxNonce);
-        uint32_t elapsed = micros() - t0;
-        USART1->CTLR1 |= USART_CTLR1_RXNEIE;
-
-        // Dọn buffer USART thừa (nếu có)
-        while (my_context.available) kcdk_usart_read(&my_context);
-
-        send_result(result, elapsed, ducoid_chars);
+    int len = read_line(line, sizeof(line));
+    if (len <= 0) {
+        kcdk_usart_write((uint8_t*)"ERR\n", 4);
+        return;
     }
 
-    return 0;
+    char *saveptr;
+    char *lastHash = strtok_r(line, ",", &saveptr);
+    char *newHash  = strtok_r(NULL, ",", &saveptr);
+    char *diffStr  = strtok_r(NULL, ",", &saveptr);
+
+    if (!lastHash || !newHash || !diffStr ||
+        strlen(lastHash) != 40 || strlen(newHash) != 40) {
+        kcdk_usart_write((uint8_t*)"ERR\n", 4);
+        return;
+    }
+
+    uint32_t difficulty = 0;
+    for (char *p = diffStr; *p; p++) {
+        if (*p < '0' || *p > '9') { difficulty = 0; break; }
+        difficulty = difficulty * 10 + (*p - '0');
+    }
+    if (difficulty == 0) { kcdk_usart_write((uint8_t*)"ERR\n", 4); return; }
+
+    uint32_t targetWords[5];
+    hex_to_words(newHash, targetWords);
+    uint32_t maxNonce = difficulty * 100 + 1;
+
+    // Tắt ngắt USART trong lúc đào để đo thời gian chính xác
+    USART1->CTLR1 &= ~USART_CTLR1_RXNEIE;
+    uint32_t t0 = micros();
+    uint32_t result = ducos1a_mine(lastHash, targetWords, maxNonce);
+    uint32_t elapsed = micros() - t0;
+    USART1->CTLR1 |= USART_CTLR1_RXNEIE;
+
+    // Dọn buffer USART thừa (nếu có)
+    while (my_context.available) kcdk_usart_read(&my_context);
+
+    send_result(result, elapsed, ducoid_chars);
 }
