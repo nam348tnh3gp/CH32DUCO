@@ -39,12 +39,14 @@ jobs:
           pio platform install https://github.com/Community-PIO-CH32V/platform-ch32v.git
 
       # Build firmware bằng Makefile, tự động tìm toolchain RISC‑V
-      - name: Install Linux RISC‑V toolchain
+      - name: Install Linux RISC‑V toolchain (MRS)
         run: |
-          wget -q https://github.com/Community-PIO-CH32V/toolchain-riscv-linux/releases/download/1.120200.220829/toolchain-riscv-linux.tar.gz
+          sudo apt-get update
+          sudo apt-get install -y wget xz-utils
+          wget -q https://mounriver.com/download/MRS_Toolchain_Linux_x64_V1.70.tar.xz
           mkdir -p ~/.platformio/packages/toolchain-riscv
-          tar xf toolchain-riscv-linux.tar.gz -C ~/.platformio/packages/toolchain-riscv
-          echo "Toolchain installed successfully"
+          tar xf MRS_Toolchain_Linux_x64_V1.70.tar.xz -C ~/.platformio/packages/toolchain-riscv --strip-components=1
+          echo "MRS Toolchain installed successfully"
 
       - name: Build firmware
         run: |
