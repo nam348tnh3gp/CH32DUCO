@@ -1,37 +1,48 @@
-// uart.cpp – triển khai UART cho CH32V003, tự lực
+// uart.cpp
 #include "uart.h"
-#include <Arduino.h>   // chỉ để có F_CPU và pinMode (không dùng Serial)
+#include <Arduino.h>   // cần cho pinMode, F_CPU
 
-// Hàm nội bộ để ghi thanh ghi
-static inline void uart_write_reg(uint32_t base, uint32_t offset, uint32_t value) {
-    *(volatile uint32_t *)(base + offset) = value;
+// Các định nghĩa nội bộ – không lộ ra ngoài
+#define CH32_UART1_BASE  0x40013800UL
+
+#define UART_STATR_OFFSET  0x00
+#define UART_DATAR_OFFSET  0x04
+#define UART_BRR_OFFSET    0x08
+#define UART_CTLR1_OFFSET  0x0C
+
+// Bit mask – đặt trong .cpp để tránh xung đột
+static const uint32_t CTLR1_UE  = (1 << 13);
+static const uint32_t CTLR1_TE  = (1 << 3);
+static const uint32_t CTLR1_RE  = (1 << 2);
+static const uint32_t STATR_TXE = (1 << 7);
+static const uint32_t STATR_RXNE = (1 << 5);
+
+static inline void reg_write(uint32_t offset, uint32_t value) {
+    *(volatile uint32_t *)(CH32_UART1_BASE + offset) = value;
 }
-static inline uint32_t uart_read_reg(uint32_t base, uint32_t offset) {
-    return *(volatile uint32_t *)(base + offset);
+static inline uint32_t reg_read(uint32_t offset) {
+    return *(volatile uint32_t *)(CH32_UART1_BASE + offset);
 }
 
 void UART_Init(uint32_t baudrate) {
-    // Bật clock USART1: set bit 14 trong APB2PCENR (RCC->APB2PCENR)
+    // Bật clock USART1: set bit 14 trong RCC->APB2PCENR
     *(volatile uint32_t *)(0x40021018UL) |= (1 << 14);
 
-    // Cấu hình chân PD5 (TX) và PD6 (RX) dùng GPIO
-    pinMode(PD5, OUTPUT_AF_PP);   // TX
-    pinMode(PD6, INPUT_PULLUP);   // RX
+    // Cấu hình chân PD5 (TX) và PD6 (RX)
+    pinMode(PD5, OUTPUT_AF_PP);
+    pinMode(PD6, INPUT_PULLUP);
 
-    // Tính BRR: F_CPU được định nghĩa bởi PlatformIO (48000000L)
+    // Baud rate
     uint32_t brr = F_CPU / baudrate;
-    uart_write_reg(CH32_UART1_BASE, CH32_UART_BRR_OFFSET, brr);
+    reg_write(UART_BRR_OFFSET, brr);
 
-    // Bật USART, TX, RX
-    uint32_t ctlr1 = 0;
-    ctlr1 = USART_CTLR1_UE | USART_CTLR1_TE | USART_CTLR1_RE;
-    uart_write_reg(CH32_UART1_BASE, CH32_UART_CTLR1_OFFSET, ctlr1);
+    // Bật UE, TE, RE
+    reg_write(UART_CTLR1_OFFSET, CTLR1_UE | CTLR1_TE | CTLR1_RE);
 }
 
 void UART_SendChar(char c) {
-    // Chờ TXE = 1
-    while (!(uart_read_reg(CH32_UART1_BASE, CH32_UART_STATR_OFFSET) & USART_STATR_TXE));
-    uart_write_reg(CH32_UART1_BASE, CH32_UART_DATAR_OFFSET, (uint32_t)c);
+    while (!(reg_read(UART_STATR_OFFSET) & STATR_TXE));
+    reg_write(UART_DATAR_OFFSET, (uint32_t)c);
 }
 
 void UART_SendString(const char *str) {
@@ -39,11 +50,10 @@ void UART_SendString(const char *str) {
 }
 
 char UART_ReadChar(void) {
-    // Chờ RXNE = 1
-    while (!(uart_read_reg(CH32_UART1_BASE, CH32_UART_STATR_OFFSET) & USART_STATR_RXNE));
-    return (char)(uart_read_reg(CH32_UART1_BASE, CH32_UART_DATAR_OFFSET) & 0xFF);
+    while (!(reg_read(UART_STATR_OFFSET) & STATR_RXNE));
+    return (char)(reg_read(UART_DATAR_OFFSET) & 0xFF);
 }
 
 int UART_Available(void) {
-    return (uart_read_reg(CH32_UART1_BASE, CH32_UART_STATR_OFFSET) & USART_STATR_RXNE) ? 1 : 0;
+    return (reg_read(UART_STATR_OFFSET) & STATR_RXNE) ? 1 : 0;
 }
