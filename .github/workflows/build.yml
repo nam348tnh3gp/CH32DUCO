@@ -43,6 +43,7 @@ jobs:
       - name: Build firmware
         run: |
           export PATH="$HOME/.platformio/packages/toolchain-riscv/bin:$PATH"
+          # Không xóa framework Arduino vì chứa header ch32v00x.h
           make clean
           make -j$(nproc)
 
