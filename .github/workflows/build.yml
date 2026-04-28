@@ -5,7 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:                # cho phép chạy tay
+  workflow_dispatch:
 
 jobs:
   build:
@@ -38,6 +38,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio
 
+      # Bước mới: tự động copy source code vào src/
+      - name: Prepare source code (copy to src/)
+        shell: bash
+        run: |
+          echo "==> Creating src/ directory"
+          mkdir -p src
+          echo "==> Copying source files from root to src/"
+          # Copy tất cả các file .ino, .cpp, .c, .h, .hpp, .S (các file nguồn/header)
+          for ext in ino cpp c h hpp S; do
+            find . -maxdepth 1 -type f -name "*.${ext}" -exec cp {} src/ \;
+          done
+          echo "==> Contents of src/:"
+          ls -la src/
+
       - name: Build all environments
         run: |
           pio run
@@ -46,16 +60,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p firmware
-
-          # Liệt kê tất cả thư mục build, mỗi thư mục tương ứng một environment
           for build_dir in .pio/build/*/; do
-            # Lấy tên environment (tên thư mục)
             env_name=$(basename "$build_dir")
-
-            # Tên file nguồn
             src="$build_dir/firmware.bin"
-
-            # Nếu file tồn tại, copy với tên mới
             if [ -f "$src" ]; then
               cp "$src" "firmware/${env_name}.bin"
               echo "Copied ${env_name}.bin"
