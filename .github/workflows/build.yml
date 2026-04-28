@@ -32,6 +32,28 @@ jobs:
             exit 1
           }
 
+      - name: 🔬 Verify SHA‑1 constants in firmware
+        run: |
+          echo "Disassembling firmware..."
+          riscv-none-elf-objdump -d firmware.elf > disasm.txt
+          echo "Searching for SHA‑1 constants..."
+          constants="5a827999 6ed9eba1 8f1bbcdc ca62c1d6 67452301 efcdab89 98badcfe 10325476 c3d2e1f0"
+          all_found=true
+          for const in $constants; do
+            if grep -qi "$const" disasm.txt; then
+              echo "✅ Constant 0x${const} found"
+            else
+              echo "❌ Constant 0x${const} NOT FOUND!"
+              all_found=false
+            fi
+          done
+          if [ "$all_found" = true ]; then
+            echo "✅ All SHA‑1 constants found – hash logic verified"
+          else
+            echo "❌ Some SHA‑1 constants missing – firmware may be incomplete!"
+            exit 1
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
