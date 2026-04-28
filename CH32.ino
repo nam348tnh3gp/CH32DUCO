@@ -1,9 +1,15 @@
-// CH32.ino – DUCO Miner for CH32V003 (đầy đủ các hàm)
+// CH32.ino
 #pragma GCC optimize ("-Ofast")
 #include <stdint.h>
 #include <string.h>
+
+// Định nghĩa serial_t để tránh lỗi từ HardwareSerial.h của framework
+#define serial_t USART_TypeDef*
+#include "ch32v00x.h"   // cần cho USART_TypeDef
+
 #include "uniqueID.h"
 #include "duco_hash.h"
+// ... các include còn lại ...
 #include "uart.h"
 #include "duino_miner_config.h"
 #include "duino_job_io.h"
