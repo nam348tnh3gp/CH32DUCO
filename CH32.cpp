@@ -1,16 +1,11 @@
-// CH32.ino
+// CH32.cpp – DUCO Miner for CH32V003 (không phụ thuộc Arduino.h)
 #pragma GCC optimize ("-Ofast")
 #include <stdint.h>
 #include <string.h>
-
-// Định nghĩa serial_t để tránh lỗi từ HardwareSerial.h của framework
-#define serial_t USART_TypeDef*
-#include "ch32v00x.h"   // cần cho USART_TypeDef
-
+#include "ch32v00x.h"            // cung cấp USART_TypeDef, GPIO, RCC, v.v.
+#include "uart.h"
 #include "uniqueID.h"
 #include "duco_hash.h"
-// ... các include còn lại ...
-#include "uart.h"
 #include "duino_miner_config.h"
 #include "duino_job_io.h"
 #include "duitoa_print.h"
@@ -30,7 +25,6 @@ static void generate_ducoid() {
     *ptr = '\0';
 }
 
-// ---------- Các hàm helper từ bản gốc ----------
 #define HEX_NIBBLE(c) (((c) - '0' < 10) ? ((c) - '0') : ((c) - 'a' + 10))
 
 static void hex_to_words(const char* hex, uint32_t* words) {
@@ -40,7 +34,6 @@ static void hex_to_words(const char* hex, uint32_t* words) {
         uint32_t b1 = (HEX_NIBBLE(src[2]) << 4) | HEX_NIBBLE(src[3]);
         uint32_t b2 = (HEX_NIBBLE(src[4]) << 4) | HEX_NIBBLE(src[5]);
         uint32_t b3 = (HEX_NIBBLE(src[6]) << 4) | HEX_NIBBLE(src[7]);
-
         words[w] = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
     }
 }
@@ -67,7 +60,6 @@ uintDiff ducos1a(const char* prevBlockHash, const char* targetBlockHash, uintDif
 #endif
     uint32_t targetWords[SHA1_HASH_LEN / 4];
     hex_to_words(targetBlockHash, targetWords);
-
     uintDiff maxNonce = difficulty * 100 + 1;
     return ducos1a_mine(prevBlockHash, targetWords, maxNonce);
 }
@@ -75,10 +67,8 @@ uintDiff ducos1a(const char* prevBlockHash, const char* targetBlockHash, uintDif
 uintDiff ducos1a_mine(const char* prevBlockHash, const uint32_t* targetWords, uintDiff maxNonce) {
     static duco_hash_state_t hash;
     duco_hash_init(&hash, prevBlockHash);
-
     char nonceStr[10 + 1] = "0";
     uint8_t nonceLen = 1;
-
     for (uintDiff nonce = 0; nonce < maxNonce; nonce++) {
         if (duco_hash_try_nonce(&hash, nonceStr, nonceLen, targetWords)) {
             return nonce;
@@ -88,11 +78,10 @@ uintDiff ducos1a_mine(const char* prevBlockHash, const uint32_t* targetWords, ui
     return 0;
 }
 
-// ---------- setup & loop ----------
 void setup() {
+    // Cấu hình LED (nếu dùng)
     pinMode(DUINO_LED_PIN, OUTPUT);
     generate_ducoid();
-
     DUINO_SERIAL_BEGIN(DUINO_MINER_BAUD);
     delay(100);
 }
@@ -110,7 +99,6 @@ void loop() {
     if (!duino_read_difficulty_until_comma(&difficulty)) return;
 
     duino_serial_flush_read();
-
     duino_led_mining_off();
 
     uint32_t startTime = micros();
@@ -118,7 +106,6 @@ void loop() {
     uint32_t elapsed = micros() - startTime;
 
     duino_led_mining_on();
-
     duino_serial_flush_read();
 
     duino_send_result_line(result, elapsed, ducoid_chars);
