@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Cache PlatformIO (để lấy toolchain RISC‑V)
+      # Cache PlatformIO packages (bao gồm toolchain)
       - name: Cache PlatformIO packages
         uses: actions/cache@v4
         with:
@@ -30,30 +30,51 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pio-noneos-
 
-      # Chỉ cài PlatformIO và toolchain, không cài framework Arduino
+      # Cài đặt PlatformIO và platform CH32V (tự động kéo toolchain)
       - name: Install PlatformIO and toolchain
         run: |
           python -m pip install --upgrade pip
           pip install platformio
+          pio pkg install -p ch32v -t toolchain-riscv || true
           pio platform install https://github.com/Community-PIO-CH32V/platform-ch32v.git
-          # Xóa framework Arduino (không cần)
-          rm -rf ~/.platformio/packages/framework-arduino-openwch-ch32
 
-      # Build bằng Makefile, sử dụng toolchain RISC‑V từ PlatformIO
+      # Build firmware bằng Makefile, tự động tìm toolchain RISC‑V
       - name: Build firmware
         run: |
-          export PATH="$HOME/.platformio/packages/toolchain-riscv/bin:$PATH"
-          # Không xóa framework Arduino vì chứa header ch32v00x.h
+          # Tìm thư mục chứa toolchain RISC‑V (có thể là toolchain-riscv hoặc toolchain-riscv-windows)
+          TOOLCHAIN_DIR=$(find ~/.platformio/packages -maxdepth 1 -type d -name "toolchain-riscv*" | head -1)
+          if [ -z "$TOOLCHAIN_DIR" ]; then
+            echo "Toolchain RISC‑V not found!"
+            exit 1
+          fi
+          echo "Using toolchain at: $TOOLCHAIN_DIR"
+          export PATH="$TOOLCHAIN_DIR/bin:$PATH"
+
+          # Kiểm tra trình biên dịch
+          if ! command -v riscv-wch-elf-gcc &> /dev/null; then
+            # Thử tên khác (ví dụ riscv-none-elf-gcc)
+            if command -v riscv-none-elf-gcc &> /dev/null; then
+              echo "Found riscv-none-elf-gcc, adjusting Makefile..."
+              sed -i 's/riscv-wch-elf-/riscv-none-elf-/g' Makefile
+            else
+              echo "No RISC‑V compiler found!"
+              exit 1
+            fi
+          fi
+
           make clean
           make -j$(nproc)
 
-      # Kiểm tra symbol main phải có trong firmware
+      # Kiểm tra symbol main trong firmware
       - name: Verify firmware symbols
         run: |
-          export PATH="$HOME/.platformio/packages/toolchain-riscv/bin:$PATH"
+          TOOLCHAIN_DIR=$(find ~/.platformio/packages -maxdepth 1 -type d -name "toolchain-riscv*" | head -1)
+          export PATH="$TOOLCHAIN_DIR/bin:$PATH"
           riscv-wch-elf-nm firmware.elf | grep -w "T main" || {
-            echo "MISSING main symbol in firmware.elf!"
-            exit 1
+            riscv-none-elf-nm firmware.elf | grep -w "T main" || {
+              echo "MISSING main symbol in firmware.elf!"
+              exit 1
+            }
           }
           echo "Firmware OK"
 
