@@ -1,4 +1,4 @@
-// duino_fake_arduino.h – Các định nghĩa thay thế Arduino cho CH32V003
+// duino_fake_arduino.h – Thay thế các hàm/macro cơ bản của Arduino
 #pragma once
 #include <stdint.h>
 #include "ch32v00x.h"
@@ -28,28 +28,36 @@
 
 static inline void pinMode(uint8_t pin, uint8_t mode) {
     GPIO_TypeDef *port;
-    uint16_t pinmask = 0;
-    if (pin < 8) { port = GPIOD; pinmask = (1 << pin); }
-    else { port = GPIOC; pinmask = (1 << (pin - 8)); }
-    if (mode == OUTPUT) {
-        port->CFGLR &= ~((uint32_t)0xF << (4 * (pin % 8)));
-        port->CFGLR |= (uint32_t)0x3 << (4 * (pin % 8));
+    uint8_t pinpos = pin % 8;
+    if (pin < 8) {
+        port = GPIOD;
     } else {
-        port->CFGLR &= ~((uint32_t)0xF << (4 * (pin % 8)));
-        port->CFGLR |= (uint32_t)0x8 << (4 * (pin % 8));
+        port = GPIOC;
     }
+    uint32_t cfglr = port->CFGLR;
+    cfglr &= ~((uint32_t)0xF << (4 * pinpos));
+    if (mode == OUTPUT) {
+        cfglr |= (uint32_t)0x3 << (4 * pinpos);
+    } else {
+        cfglr |= (uint32_t)0x8 << (4 * pinpos);
+    }
+    port->CFGLR = cfglr;
 }
 
 static inline void digitalWrite(uint8_t pin, uint8_t val) {
     GPIO_TypeDef *port;
     uint16_t pinmask;
-    if (pin < 8) { port = GPIOD; pinmask = (1 << pin); }
-    else { port = GPIOC; pinmask = (1 << (pin - 8)); }
+    if (pin < 8) {
+        port = GPIOD;
+        pinmask = (1 << pin);
+    } else {
+        port = GPIOC;
+        pinmask = (1 << (pin - 8));
+    }
     if (val) port->BSHR = pinmask;
     else     port->BCR = pinmask;
 }
 
-// Biến toàn cục millis
 extern volatile uint32_t _millis_tick;
 
 void delay(uint32_t ms) {
