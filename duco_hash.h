@@ -1,7 +1,5 @@
 #pragma once
 
-#include <Arduino.h>
-
 #define SHA1_HASH_LEN 20
 
 struct duco_hash_state_t {
