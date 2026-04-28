@@ -66,6 +66,23 @@ typedef enum IRQn
 #define HardFault_IRQn    EXC_IRQn
 
 #include <stdint.h>
+// Pin definitions for CH32V003
+#define PD0 0
+#define PD1 1
+#define PD2 2
+#define PD3 3
+#define PD4 4
+#define PD5 5
+#define PD6 6
+#define PD7 7
+#define PC0 8
+#define PC1 9
+#define PC2 10
+#define PC3 11
+#define PC4 12
+#define PC5 13
+#define PC6 14
+#define PC7 15
 #include <core_riscv.h>
 #include <system_ch32v00x.h>
 
