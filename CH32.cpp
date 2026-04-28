@@ -14,7 +14,7 @@ typedef uint32_t uintDiff;
 static char ducoid_chars[23];
 
 static void generate_ducoid() {
-    memcpy(ducoid_chars, "DUCOID", 6);
+    std::memcpy(ducoid_chars, "DUCOID", 6);
     char *ptr = ducoid_chars + 6;
     for (uint8_t i = 0; i < 8; i++) {
         uint8_t val = UniqueID8[i];
@@ -53,6 +53,7 @@ static void increment_nonce_ascii(char* nonceStr, uint8_t* nonceLen) {
     nonceStr[*nonceLen] = '\0';
 }
 
+// Forward declaration
 uintDiff ducos1a_mine(const char* prevBlockHash, const uint32_t* targetWords, uintDiff maxNonce);
 
 uintDiff ducos1a(const char* prevBlockHash, const char* targetBlockHash, uintDiff difficulty) {
@@ -75,6 +76,9 @@ uintDiff ducos1a_mine(const char* prevBlockHash, const uint32_t* targetWords, ui
     }
     return 0;
 }
+
+// ––– Bắt buộc: setup/loop phải trong extern "C" để main.cpp gọi được –––
+extern "C" {
 
 void setup() {
     pinMode(DUINO_LED_PIN, OUTPUT);
@@ -107,3 +111,5 @@ void loop() {
 
     duino_send_result_line(result, elapsed, ducoid_chars);
 }
+
+} // extern "C"
