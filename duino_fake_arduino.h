@@ -3,13 +3,12 @@
 #include <stdint.h>
 #include "ch32v00x.h"
 
-// ---------- GPIO ----------
 #define HIGH 1
 #define LOW  0
 #define OUTPUT 1
 #define INPUT  0
 
-// Chân GPIO (CH32V003: PD0..PD7, PC0..PC7)
+// Chân GPIO
 #define PD0 0
 #define PD1 1
 #define PD2 2
@@ -29,15 +28,15 @@
 
 static inline void pinMode(uint8_t pin, uint8_t mode) {
     GPIO_TypeDef *port;
-    uint16_t pinmask;
+    uint16_t pinmask = 0;
     if (pin < 8) { port = GPIOD; pinmask = (1 << pin); }
     else { port = GPIOC; pinmask = (1 << (pin - 8)); }
     if (mode == OUTPUT) {
         port->CFGLR &= ~((uint32_t)0xF << (4 * (pin % 8)));
-        port->CFGLR |= (uint32_t)0x3 << (4 * (pin % 8)); // output 50MHz push-pull
-    } else { // INPUT
+        port->CFGLR |= (uint32_t)0x3 << (4 * (pin % 8));
+    } else {
         port->CFGLR &= ~((uint32_t)0xF << (4 * (pin % 8)));
-        port->CFGLR |= (uint32_t)0x8 << (4 * (pin % 8)); // input pull-up
+        port->CFGLR |= (uint32_t)0x8 << (4 * (pin % 8));
     }
 }
 
@@ -46,13 +45,12 @@ static inline void digitalWrite(uint8_t pin, uint8_t val) {
     uint16_t pinmask;
     if (pin < 8) { port = GPIOD; pinmask = (1 << pin); }
     else { port = GPIOC; pinmask = (1 << (pin - 8)); }
-    if (val) port->BSHR = pinmask;   // set bit
-    else     port->BCR = pinmask;   // clear bit
+    if (val) port->BSHR = pinmask;
+    else     port->BCR = pinmask;
 }
 
-// ---------- Thời gian ----------
-// Dùng SysTick đã được framework khởi tạo, ghi lại số mili giây
-extern volatile uint32_t _millis_tick; // sẽ được khai báo trong CH32.cpp
+// Biến toàn cục millis
+extern volatile uint32_t _millis_tick;
 
 void delay(uint32_t ms) {
     uint32_t start = _millis_tick;
@@ -64,6 +62,5 @@ uint32_t millis(void) {
 }
 
 uint32_t micros(void) {
-    // Giả lập micros bằng millis*1000 (độ chính xác thấp nhưng đủ dùng)
     return _millis_tick * 1000;
 }
