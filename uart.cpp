@@ -1,6 +1,10 @@
 #include "uart.h"
 #include <stdint.h>
 
+// Tự định nghĩa tần số CPU (48 MHz từ platformio.ini)
+#define F_CPU 48000000L
+
+// ... phần còn lại giữ nguyên (đã tự cấu hình GPIO) ...
 #define CH32_UART1_BASE  0x40013800UL
 
 #define UART_STATR_OFFSET  0x00
