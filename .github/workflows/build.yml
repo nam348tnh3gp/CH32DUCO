@@ -1,4 +1,4 @@
-name: Build DUCO Miner for CH32V003
+name: Build DUCO Miner for CH32V003 (NoneOS)
 
 on:
   push:
@@ -10,9 +10,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -22,71 +19,53 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Cache PlatformIO (để lấy toolchain RISC‑V)
       - name: Cache PlatformIO packages
         uses: actions/cache@v4
         with:
           path: |
             ~/.platformio
             ~/.cache/pip
-            .pio
-          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          key: ${{ runner.os }}-pio-noneos-${{ hashFiles('platformio.ini') }}
           restore-keys: |
-            ${{ runner.os }}-pio-
+            ${{ runner.os }}-pio-noneos-
 
-      - name: Install PlatformIO
+      # Chỉ cài PlatformIO và toolchain, không cài framework Arduino
+      - name: Install PlatformIO and toolchain
         run: |
           python -m pip install --upgrade pip
           pip install platformio
+          pio platform install https://github.com/Community-PIO-CH32V/platform-ch32v.git
+          # Xóa framework Arduino (không cần)
+          rm -rf ~/.platformio/packages/framework-arduino-openwch-ch32
 
-      - name: Prepare source code (copy to src/)
-        shell: bash
+      # Build bằng Makefile, sử dụng toolchain RISC‑V từ PlatformIO
+      - name: Build firmware
         run: |
-          echo "==> Creating src/ directory"
-          mkdir -p src
-          echo "==> Copying source files from root to src/"
-          for ext in ino cpp c h hpp S; do
-            find . -maxdepth 1 -type f -name "*.${ext}" -exec cp {} src/ \;
-          done
-          echo "==> Contents of src/:"
-          ls -la src/
-
-      - name: Build all environments
-        run: pio run
-
-      - name: Verify firmware symbols
-        shell: bash
-        run: |
-          echo "Checking essential symbols..."
-          # Thêm toolchain RISC‑V vào PATH
           export PATH="$HOME/.platformio/packages/toolchain-riscv/bin:$PATH"
-          for elf in .pio/build/*/firmware.elf; do
-            echo "==> $(basename $(dirname $elf))"
-            riscv-wch-elf-nm "$elf" | grep -E "setup|loop|UART_Init" || {
-              echo "MISSING symbols in $elf!"
-              exit 1
-            }
-          done
-          echo "All symbols OK"
+          make clean
+          make -j$(nproc)
 
-      - name: Organize firmware per board
-        shell: bash
+      # Kiểm tra symbol main phải có trong firmware
+      - name: Verify firmware symbols
         run: |
-          mkdir -p firmware
-          for build_dir in .pio/build/*/; do
-            env_name=$(basename "$build_dir")
-            src="$build_dir/firmware.bin"
-            if [ -f "$src" ]; then
-              cp "$src" "firmware/${env_name}.bin"
-              echo "Copied ${env_name}.bin"
-            else
-              echo "WARNING: firmware.bin not found for ${env_name}"
-            fi
-          done
+          export PATH="$HOME/.platformio/packages/toolchain-riscv/bin:$PATH"
+          riscv-wch-elf-nm firmware.elf | grep -w "T main" || {
+            echo "MISSING main symbol in firmware.elf!"
+            exit 1
+          }
+          echo "Firmware OK"
 
-      - name: Upload board-specific firmware artifacts
+      # Đóng gói artifact
+      - name: Prepare artifact
+        run: |
+          mkdir -p output
+          cp firmware.bin output/DUCO_CH32V003_NoneOS.bin
+
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CH32V003-DUCO-firmware
-          path: firmware/*.bin
+          name: CH32V003-NoneOS-firmware
+          path: output/*.bin
           if-no-files-found: error
           retention-days: 14
