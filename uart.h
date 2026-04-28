@@ -1,4 +1,4 @@
-// uart.h – Không gây xung đột với framework
+// uart.h
 #pragma once
 #include <stdint.h>
 
