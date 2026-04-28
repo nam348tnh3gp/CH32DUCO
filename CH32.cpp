@@ -1,8 +1,6 @@
-// CH32.cpp – DUCO Miner for CH32V003 (hoàn toàn không dùng Arduino.h)
+// CH32.cpp – DUCO Miner for CH32V003 (không phụ thuộc Arduino.h)
 #pragma GCC optimize ("-Ofast")
-#include <stdint.h>
-#include <string.h>
-#include "ch32v00x.h"            // cung cấp USART_TypeDef, GPIO, RCC, SysTick, v.v.
+#include "duino_fake_arduino.h"   // include đầu tiên để cung cấp pinMode, millis...
 #include "uart.h"
 #include "uniqueID.h"
 #include "duco_hash.h"
@@ -12,56 +10,13 @@
 
 typedef uint32_t uintDiff;
 
-// ---------- Thay thế các macro/hàm Arduino cần dùng ----------
-#define HIGH 1
-#define LOW  0
-#define OUTPUT 1
-#define INPUT  0
+// Biến toàn cục cho millis (cập nhật bởi SysTick_Handler)
+volatile uint32_t _millis_tick = 0;
 
-static inline void pinMode(uint8_t pin, uint8_t mode) {
-    // Chuyển đổi pin số sang cổng và bit
-    GPIO_TypeDef *port;
-    uint16_t pinmask;
-    if (pin < 8) { port = GPIOD; pinmask = (1 << pin); }
-    else { port = GPIOC; pinmask = (1 << (pin - 8)); } // giả định PC0..PC7
-    if (mode == OUTPUT) {
-        port->CFGLR &= ~((uint32_t)0xF << (4 * (pin % 8)));
-        port->CFGLR |= (uint32_t)0x3 << (4 * (pin % 8)); // output 50MHz push-pull
-    } else { // INPUT
-        port->CFGLR &= ~((uint32_t)0xF << (4 * (pin % 8)));
-        port->CFGLR |= (uint32_t)0x8 << (4 * (pin % 8)); // input pull-up
-    }
+// SysTick_Handler được framework gọi
+extern "C" void SysTick_Handler(void) {
+    _millis_tick++;
 }
-
-static inline void digitalWrite(uint8_t pin, uint8_t val) {
-    GPIO_TypeDef *port;
-    uint16_t pinmask;
-    if (pin < 8) { port = GPIOD; pinmask = (1 << pin); }
-    else { port = GPIOC; pinmask = (1 << (pin - 8)); }
-    if (val) port->BSHR = pinmask;   // set bit
-    else     port->BCR = pinmask;   // clear bit
-}
-
-volatile uint32_t _millis = 0;   // giả lập millis bằng SysTick (nếu cần)
-// Khởi tạo SysTick cho delay (nếu chưa có, có thể dùng vòng lặp thô)
-void delay(uint32_t ms) {
-    uint32_t start = SysTick->VAL; // không chính xác lắm, nhưng tạm
-    // Cách đơn giản: dùng vòng lặp NOP, giả sử 48MHz, 1ms ~ 48000 chu kỳ
-    for (uint32_t i = 0; i < ms * 48000; i++) {
-        __NOP();
-    }
-}
-
-uint32_t millis(void) {
-    // Nếu không cần độ chính xác cao, dùng biến toàn cục cập nhật bởi SysTick_Handler
-    return _millis;
-}
-
-uint32_t micros(void) {
-    // Tương tự, có thể đọc SysTick
-    return 0; // tạm, có thể cải thiện sau
-}
-// ------------------------------------------------------------
 
 static char ducoid_chars[23];
 
@@ -105,7 +60,7 @@ static void increment_nonce_ascii(char* nonceStr, uint8_t* nonceLen) {
     nonceStr[*nonceLen] = '\0';
 }
 
-// Forward declaration cần thiết
+// Forward declaration
 uintDiff ducos1a_mine(const char* prevBlockHash, const uint32_t* targetWords, uintDiff maxNonce);
 
 uintDiff ducos1a(const char* prevBlockHash, const char* targetBlockHash, uintDiff difficulty) {
@@ -130,7 +85,6 @@ uintDiff ducos1a_mine(const char* prevBlockHash, const uint32_t* targetWords, ui
 }
 
 void setup() {
-    // Cấu hình LED (dùng hàm tự viết)
     pinMode(DUINO_LED_PIN, OUTPUT);
     generate_ducoid();
     DUINO_SERIAL_BEGIN(DUINO_MINER_BAUD);
