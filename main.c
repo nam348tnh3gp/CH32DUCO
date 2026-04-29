@@ -1,15 +1,7 @@
-/*
- * Duino-Coin Miner for CH32V003 (RISC-V RV32EC)
- * Bare-metal NoneOS – USART1, 48MHz PLL
- * NO explicit register usage – compiler handles everything
- */
-
 #include <stdint.h>
 #include <stdbool.h>
-// Thêm dòng này vào đầu main.c, sau #include:
-volatile uint32_t tick_ms = 0;
 
-// ================== Minimal libc (no register asm) ==================
+// ================== Minimal libc ==================
 static void* simple_memcpy(void* dst, const void* src, uint32_t n) {
     uint8_t* d = (uint8_t*)dst;
     const uint8_t* s = (const uint8_t*)src;
@@ -17,10 +9,11 @@ static void* simple_memcpy(void* dst, const void* src, uint32_t n) {
     return dst;
 }
 
-static void* simple_memset(void* p, int c, uint32_t n) {
-    uint8_t* ptr = (uint8_t*)p;
-    while (n) { *ptr++ = (uint8_t)c; n--; }
-    return p;
+// ================== SysTick ==================
+volatile uint32_t tick_ms = 0;
+
+static uint32_t millis(void) {
+    return tick_ms;
 }
 
 // ================== Hardware Registers ==================
@@ -46,71 +39,38 @@ static void* simple_memset(void* p, int c, uint32_t n) {
 #define FLASH_ACTLR          (*(volatile uint32_t*)0x40022000)
 #define EXTEND_CTR           (*(volatile uint32_t*)0x40023800)
 
-// ================== Clock (SysTick for timing) ==================
 #define SYSTICK_BASE         0xE000F000u
 #define STK_CTLR             (*(volatile uint32_t*)(SYSTICK_BASE + 0x00))
 #define STK_CNTL             (*(volatile uint32_t*)(SYSTICK_BASE + 0x08))
 #define STK_CMPLR            (*(volatile uint32_t*)(SYSTICK_BASE + 0x10))
 
-
-// SysTick interrupt handler (use it if enabled, else poll)
-void SysTick_Handler(void) {
-    tick_ms++;
-    // Clear flag by reading STK_CTLR? No, just let it roll.
-}
-
-static uint32_t millis(void) {
-    return tick_ms;
-}
-
-static uint32_t micros(void) {
-    // Rough: SysTick @ 1MHz -> 1us per tick
-    return STK_CNTL;
-}
-
-static void delay_ms(uint32_t ms) {
-    uint32_t start = millis();
-    while (millis() - start < ms) { /* spin */ }
-}
-
+// ================== Clock ==================
 static void clock_init(void) {
-    // Enable HSI
     RCC_CTLR |= 1u;
     while (!(RCC_CTLR & 2u)) {}
-
-    // PLL x2 (24MHz -> 48MHz)
     EXTEND_CTR = (EXTEND_CTR & ~0x3Fu) | 2u;
     RCC_CTLR |= (1u << 24);
     while (!(RCC_CTLR & (1u << 25))) {}
-
-    // Flash 1 wait state for 48MHz
     FLASH_ACTLR = 1;
-
-    // Switch system clock to PLL
     RCC_CFGR0 = (RCC_CFGR0 & ~3u) | 2u;
     while ((RCC_CFGR0 & 0xCu) != 0x8u) {}
 
-    // Configure SysTick @ 1MHz (48MHz / 48)
-    STK_CMPLR = 47;  // counting from 0..47 = 48 ticks = 1us? Actually want 1ms = 48000
-    // Let's use 1ms tick: 48MHz / 48000 = 1000Hz
     STK_CMPLR = 47999;
     STK_CNTL = 0;
-    STK_CTLR = 0x7;  // Enable, use HCLK, interrupt enable, auto-reload
+    STK_CTLR = 0x7;
 }
 
 // ================== USART1 ==================
 static void usart1_init(void) {
-    RCC_APB2PCENR |= (1u << 5) | (1u << 14);  // GPIOD + USART1
+    RCC_APB2PCENR |= (1u << 5) | (1u << 14);
 
-    // PD5 = TX (AF push-pull), PD6 = RX (input pull-up)
     uint32_t cfg = GPIOD_CFGLR;
     cfg &= ~(0xFFu << 20);
-    cfg |= (0xBu << 20) | (0x8u << 24);  // PD6 pull-up input
+    cfg |= (0xBu << 20) | (0x8u << 24);
     GPIOD_CFGLR = cfg;
 
-    // 115200 @ 48MHz
     USART1_BRR = (26u << 4) | 1u;
-    USART1_CTLR1 = (1u << 13) | (1u << 3) | (1u << 2);  // UE | TE | RE
+    USART1_CTLR1 = (1u << 13) | (1u << 3) | (1u << 2);
 
     for (volatile uint32_t i = 0; i < 10000; i++) {}
 }
@@ -144,7 +104,7 @@ static bool usart_read_timeout(char* c, uint32_t timeout_ms) {
 }
 
 // ================== Unique ID ==================
-static char ducoid[23];
+static char ducoid_chars[23];
 
 static void generate_ducoid(void) {
     uint8_t bytes[12];
@@ -338,15 +298,15 @@ int main(void) {
         uintDiff maxN = diff * 100u + 1u;
         if (diff > 655u) maxN = 0;
 
-        uint32_t st = micros();
+        uint32_t st = STK_CNTL;  // dùng SysTick counter thay vì micros()
         uintDiff res = ducos1a_mine(last, target, maxN);
-        uint32_t el = micros() - st;
+        uint32_t el = st - STK_CNTL;  // số tick đã trôi qua (đếm xuống)
 
         usart_print_bin(res);
         usart_putc(',');
         usart_print_bin(el);
         usart_putc(',');
-        usart_print(ducoid);
+        usart_print(ducoid_chars);
         usart_putc('\n');
         continue;
 
