@@ -52,7 +52,6 @@ static void* simple_memset(void* p, int c, uint32_t n) {
 #define STK_CNTL             (*(volatile uint32_t*)(SYSTICK_BASE + 0x08))
 #define STK_CMPLR            (*(volatile uint32_t*)(SYSTICK_BASE + 0x10))
 
-static volatile uint32_t tick_ms = 0;
 
 // SysTick interrupt handler (use it if enabled, else poll)
 void SysTick_Handler(void) {
