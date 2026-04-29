@@ -5,9 +5,12 @@ https://duinocoin.com
 https://github.com/revoxhere/duino-coin
 Duino-Coin Team & Community 2019-2026
 
-Modified for CH32V003 compatibility:
+FULL FIX for CH32V003:
 - Added \n terminator to all serial writes (firmware expects newline)
 - dsrdtr=False to prevent auto-reset on port open
+- Fixed difficulty parsing (handle comma before \n)
+- Fixed elapsed time format (milliseconds, not binary)
+- Fixed result parsing from board (decimal format)
 """
 
 from os import _exit, mkdir
@@ -124,8 +127,8 @@ class Settings:
 
     try:
         # Raspberry Pi latin users can't display this character
-        "‖".encode(sys.stdout.encoding)
-        BLOCK = " ‖ "
+        "\u2016".encode(sys.stdout.encoding)
+        BLOCK = " \u2016 "
     except:
         BLOCK = " | "
     PICK = ""
@@ -136,9 +139,9 @@ class Settings:
         # Windows' cmd does not support emojis, shame!
         # And some codecs same, for example the Latin-1 encoding don`t support emoji
         try:
-            "⛏ ⚙".encode(sys.stdout.encoding) # if the terminal support emoji
-            PICK = " ⛏"
-            COG = " ⚙"
+            "\u26cf \u2699".encode(sys.stdout.encoding) # if the terminal support emoji
+            PICK = " \u26cf"
+            COG = " \u2699"
         except UnicodeEncodeError: # else
             PICK = ""
             COG = " @"
@@ -843,7 +846,7 @@ def greeting():
         + Settings.BLOCK + Style.NORMAL
         + Fore.RESET + get_string('algorithm')
         + Style.BRIGHT + Fore.YELLOW
-        + 'DUCO-S1A ⚙ AVR diff')
+        + 'DUCO-S1A \u2699 AVR diff')
 
     if rig_identifier[0] != "None" or len(rig_identifier) > 1:
         print(
@@ -986,7 +989,7 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
             except:
                 pass
             try:
-                # Thêm dsrdtr=False để tắt DTR, tránh reset board CH32V003
+                # ===== FIX: dsrdtr=False để tắt DTR, tránh reset board CH32V003 =====
                 ser = Serial(com, baudrate=int(Settings.BAUDRATE),
                              timeout=int(Settings.AVR_TIMEOUT),
                              dsrdtr=False)
@@ -1069,18 +1072,17 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
         while retries < 3:
             try:
                 debug_output(com + ': Sending hash test to the board')
-                # ===== SỬA: thêm \n vào cuối =====
+                # ===== FIX: Thêm \n vào cuối để firmware CH32V003 nhận biết kết thúc job =====
                 ser.write(bytes(str(prev_hash
                                     + Settings.SEPARATOR
                                     + exp_hash
                                     + Settings.SEPARATOR
                                     + "10"
                                     + Settings.SEPARATOR
-                                    + "\n"),            # ← CH32V003 firmware expects \n
+                                    + "\n"),
                                 encoding=Settings.ENCODING))
                 debug_output(com + ': Reading hash test from the board')
                 result = ser.read_until(b'\n').decode().strip().split(',')
-                ser.flush()
 
                 if result[0] and result[1]:
                     _ = int(result[0], 2)
@@ -1161,14 +1163,14 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
 
                 try:
                     debug_output(com + ': Sending job to the board')
-                    # ===== SỬA: thêm \n vào cuối =====
+                    # ===== FIX: Thêm \n vào cuối để firmware CH32V003 nhận biết kết thúc job =====
                     ser.write(bytes(str(job[0]
                                         + Settings.SEPARATOR
                                         + job[1]
                                         + Settings.SEPARATOR
                                         + job[2]
                                         + Settings.SEPARATOR
-                                        + "\n"),            # ← CH32V003 firmware expects \n
+                                        + "\n"),
                                     encoding=Settings.ENCODING))
                     debug_output(com + ': Reading result from the board')
                     result = ser.read_until(b'\n').decode().strip().split(',')
@@ -1189,8 +1191,12 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 break
 
             try:
-                computetime = round(int(result[1], 2) / 1000000, 5)
-                num_res = int(result[0], 2)
+                # ===== FIX: Board gửi kết quả dạng số thập phân, không phải nhị phân =====
+                # result[0] = nonce (decimal string)
+                # result[1] = elapsed_ms (decimal string)  
+                # result[2] = DUCOID (hex string)
+                computetime = round(int(result[1]) / 1000, 5)  # ms -> seconds
+                num_res = int(result[0])
                 hashrate_t = round(num_res / computetime, 2)
 
                 hashrate_mean.append(hashrate_t)
