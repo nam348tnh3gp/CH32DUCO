@@ -104,7 +104,7 @@ static bool usart_read_timeout(char* c, uint32_t timeout_ms) {
 }
 
 // ================== Unique ID ==================
-static char ducoid_chars[23];
+static char ducoid[23];
 
 static void generate_ducoid(void) {
     uint8_t bytes[12];
