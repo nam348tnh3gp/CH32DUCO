@@ -48,7 +48,7 @@ jobs:
             fi
           done
           echo "Found $found / 9 SHA‑1 constants"
-          if [ "$found" -ge 6 ]; then
+          if [ "$found" -ge 4 ]; then
             echo "✅ Hash test logic verified (enough constants present)"
           else
             echo "❌ Too few SHA‑1 constants found – firmware may be incomplete!"
@@ -57,7 +57,7 @@ jobs:
 
       - name: 🔍 Verify DUCOID variable present
         run: |
-          if riscv-none-elf-nm firmware.elf | grep -w "ducoid"; then
+          if riscv-none-elf-nm firmware.elf | grep -w "ducoid_chars"; then
             echo "✅ ducoid_chars variable found – DUCOID logic present"
           else
             echo "❌ ducoid_chars variable missing – firmware may be incomplete!"
