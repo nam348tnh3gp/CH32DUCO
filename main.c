@@ -80,9 +80,9 @@ static void send_result(uintDiff nonce, uint32_t elapsed_ms) {
     uart_puts("\n");
 }
 
-/*
+/**
  * Đọc một job từ UART (polling, có timeout).
- * Job có dạng: lastBlockHash(40),newBlockHash(40),difficulty\n
+ * Job có dạng: lastBlockHash(40),newBlockHash(40),difficulty,\n
  * Trả về 0 nếu thành công, 1 nếu lỗi/timeout.
  */
 static int read_job(char *lastBlockHash, char *newBlockHash, char *diffStr) {
@@ -108,12 +108,13 @@ static int read_job(char *lastBlockHash, char *newBlockHash, char *diffStr) {
     // 4. Dấu phẩy thứ hai
     if (!uart_getc_timeout(&c, 1000) || c != ',') return 1;
     
-    // 5. Đọc difficulty – cho đến khi gặp '\n' (hỗ trợ cả job không có dấu phẩy cuối)
+    // 5. Đọc difficulty – bỏ qua dấu phẩy cuối cùng, dừng ở '\n'
     int dpos = 0;
     while (1) {
         if (!uart_getc_timeout(&c, 2000)) return 1;
-        if (c == '\n') break;          // kết thúc dòng
-        if (c == '\r') continue;       // bỏ qua carriage return nếu có
+        if (c == '\n') break;           // kết thúc dòng
+        if (c == '\r') continue;        // bỏ qua carriage return nếu có
+        if (c == ',') continue;         // bỏ qua dấu phẩy phân cách cuối cùng
         if (dpos < 15) {
             diffStr[dpos++] = c;
         }
