@@ -4,6 +4,10 @@ Based on Duino-Coin Official AVR Miner 4.3 © MIT licensed
 https://duinocoin.com
 https://github.com/revoxhere/duino-coin
 Duino-Coin Team & Community 2019-2026
+
+Modified for CH32V003 compatibility:
+- Added \n terminator to all serial writes (firmware expects newline)
+- dsrdtr=False to prevent auto-reset on port open
 """
 
 from os import _exit, mkdir
@@ -1065,12 +1069,14 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
         while retries < 3:
             try:
                 debug_output(com + ': Sending hash test to the board')
+                # ===== SỬA: thêm \n vào cuối =====
                 ser.write(bytes(str(prev_hash
                                     + Settings.SEPARATOR
                                     + exp_hash
                                     + Settings.SEPARATOR
                                     + "10"
-                                    + Settings.SEPARATOR),
+                                    + Settings.SEPARATOR
+                                    + "\n"),            # ← CH32V003 firmware expects \n
                                 encoding=Settings.ENCODING))
                 debug_output(com + ': Reading hash test from the board')
                 result = ser.read_until(b'\n').decode().strip().split(',')
@@ -1155,12 +1161,14 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
 
                 try:
                     debug_output(com + ': Sending job to the board')
+                    # ===== SỬA: thêm \n vào cuối =====
                     ser.write(bytes(str(job[0]
                                         + Settings.SEPARATOR
                                         + job[1]
                                         + Settings.SEPARATOR
                                         + job[2]
-                                        + Settings.SEPARATOR),
+                                        + Settings.SEPARATOR
+                                        + "\n"),            # ← CH32V003 firmware expects \n
                                     encoding=Settings.ENCODING))
                     debug_output(com + ': Reading result from the board')
                     result = ser.read_until(b'\n').decode().strip().split(',')
