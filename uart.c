@@ -8,11 +8,13 @@
 //   HCLK = 48MHz, baud = 115200
 //   USARTDIV = 48e6 / (16 * 115200) ≈ 26.04167
 //   DIV_Mantissa = 26, DIV_Fraction = round(0.04167*16) = 1
-#define USART_BRR_115200_48MHZ  ((26 << 4) | 1)   // 417
+#define USART_BRR_115200_48MHZ  ((26 << 4) | 1)   // 0x1A1
 
-// Tự động xoá mọi cờ lỗi UART bằng cách đọc STATR rồi DATAR
+/**
+ * Xóa mọi cờ lỗi UART bằng cách đọc STATR rồi DATAR.
+ * Các cờ ORE, FE, NE, PE sẽ tự động được xóa sau khi đọc DATAR.
+ */
 static inline void uart_clear_errors(void) {
-    // Đọc thanh ghi trạng thái và dữ liệu để xoá tất cả cờ: ORE, FE, NE, PE
     (void)USART1->STATR;
     (void)USART1->DATAR;
 }
@@ -41,36 +43,57 @@ void uart_puts(const char *s) {
     while (*s) uart_putc(*s++);
 }
 
-// Đọc ký tự, xử lý triệt để mọi lỗi (ORE, FE, NE, PE)
+/**
+ * Đọc 1 ký tự, bỏ qua mọi byte bị lỗi.
+ * Chỉ trả về byte sạch (không lỗi frame, noise, parity).
+ * Nếu không có dữ liệu sạch, hàm sẽ chờ vô hạn (hoặc đến khi có byte OK).
+ */
 char uart_getc(void) {
-    // Nếu có bất kỳ lỗi nào, xoá chúng trước khi chờ dữ liệu
-    if (USART1->STATR & (USART_STATR_ORE | USART_STATR_FE |
-                         USART_STATR_NE  | USART_STATR_PE)) {
-        uart_clear_errors();
-    }
-    // Chờ dữ liệu sẵn sàng
-    while (!(USART1->STATR & USART_STATR_RXNE));
-    return USART1->DATAR;
+    uint16_t sr;
+    char c;
+
+    do {
+        // Chờ cờ RXNE (có dữ liệu hoặc lỗi)
+        while (!(USART1->STATR & USART_STATR_RXNE));
+        // Đọc trạng thái và dữ liệu cùng lúc để xóa các cờ
+        sr = USART1->STATR;
+        c = USART1->DATAR;
+        // Nếu có lỗi, bỏ qua byte này và tiếp tục chờ byte tiếp theo
+    } while (sr & (USART_STATR_FE | USART_STATR_NE | USART_STATR_PE));
+
+    return c;
 }
 
-// Đọc ký tự có timeout (ms), trả về 1 nếu thành công, 0 nếu timeout
+/**
+ * Đọc 1 ký tự với timeout (ms), bỏ qua byte lỗi.
+ * Trả về 1 nếu nhận được byte sạch, 0 nếu timeout.
+ */
 int uart_getc_timeout(char *c, uint32_t timeout_ms) {
-    // Xoá lỗi trước khi bắt đầu chờ (giống như uart_getc)
-    if (USART1->STATR & (USART_STATR_ORE | USART_STATR_FE |
-                         USART_STATR_NE  | USART_STATR_PE)) {
-        uart_clear_errors();
-    }
-
+    uint16_t sr;
     uint32_t start = millis();
-    while (!(USART1->STATR & USART_STATR_RXNE)) {
-        if ((millis() - start) >= timeout_ms) {
-            return 0; // Timeout
+
+    do {
+        // Chờ RXNE hoặc timeout
+        while (!(USART1->STATR & USART_STATR_RXNE)) {
+            if ((millis() - start) >= timeout_ms) {
+                return 0; // Timeout
+            }
         }
-    }
-    *c = USART1->DATAR;
-    return 1;
+        // Đọc và kiểm tra lỗi
+        sr = USART1->STATR;
+        *c = USART1->DATAR;
+        if (!(sr & (USART_STATR_FE | USART_STATR_NE | USART_STATR_PE))) {
+            return 1; // Byte sạch
+        }
+        // Byte lỗi, reset thời gian và tiếp tục chờ byte khác
+        start = millis();
+    } while (1);
 }
 
+/**
+ * Trả về 1 nếu có dữ liệu sẵn sàng (không phân biệt lỗi hay không).
+ * Dùng để kiểm tra nhanh trước khi gọi uart_getc().
+ */
 int uart_available(void) {
     return (USART1->STATR & USART_STATR_RXNE) ? 1 : 0;
 }
