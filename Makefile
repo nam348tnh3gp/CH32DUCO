@@ -1,37 +1,55 @@
-CROSS = riscv-none-elf-
-CC    = $(CROSS)gcc
-CXX   = $(CROSS)g++
-AS    = $(CROSS)as
-LD    = $(CROSS)ld
-OBJCOPY = $(CROSS)objcopy
-SIZE    = $(CROSS)size
+# ============================================================
+# Duino-Coin Miner for CH32V003 – NoneOS Makefile (gộp 1 file)
+# ============================================================
 
-CFLAGS   = -march=rv32ec -mabi=ilp32e -Os -Wall -I. -DCH32V003 -ffunction-sections -fdata-sections
-CXXFLAGS = $(CFLAGS) -std=c++11 -fno-rtti -fno-exceptions
-LDFLAGS  = -T ch32v003.ld -nostartfiles -Wl,--gc-sections -lgcc
+PROJECT   := firmware
 
-SRCS_C   = main.c uart.c gpio.c delay.c unique_id.c system_ch32v00x.c
-SRCS_CPP = duco_hash.cpp
-ASMS     = startup_ch32v003.S
-OBJS     = $(SRCS_C:.c=.o) $(SRCS_CPP:.cpp=.o) $(ASMS:.S=.o)
+CC        := riscv-none-elf-gcc
+OBJCOPY   := riscv-none-elf-objcopy
+OBJDUMP   := riscv-none-elf-objdump
+SIZE      := riscv-none-elf-size
+NM        := riscv-none-elf-nm
 
-all: firmware.bin
+ARCH_FLAGS := -march=rv32ec -mabi=ilp32e
+OPT_FLAGS  := -Os -ffunction-sections -fdata-sections
+DBG_FLAGS  := -g -Wall -Wextra
+DEFINES    := -DCH32V003
+INCLUDES   := -I.
 
-%.o: %.c
+CFLAGS     := $(ARCH_FLAGS) $(OPT_FLAGS) $(DBG_FLAGS) $(DEFINES) $(INCLUDES) \
+              -ffreestanding -fno-builtin
+
+LDFLAGS    := -T ch32v003.ld -nostartfiles -nodefaultlibs -nostdlib \
+              -Wl,--gc-sections -Wl,--print-memory-usage -lgcc
+
+# ===== Chỉ build 2 file =====
+SRCS := main.c startup_ch32v003.S
+OBJS := main.o startup_ch32v003.o
+
+all: $(PROJECT).elf $(PROJECT).bin $(PROJECT).hex
+
+main.o: main.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+startup_ch32v003.o: startup_ch32v003.S
+	$(CC) $(CFLAGS) -x assembler-with-cpp -c $< -o $@
 
-%.o: %.S
-	$(AS) -march=rv32ec -mabi=ilp32e $< -o $@
+$(PROJECT).elf: $(OBJS)
+	$(CC) $(ARCH_FLAGS) $(OBJS) $(LDFLAGS) -o $@
 
-firmware.elf: $(OBJS)
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@
-
-firmware.bin: firmware.elf
+$(PROJECT).bin: $(PROJECT).elf
 	$(OBJCOPY) -O binary $< $@
-	$(SIZE) $<
+
+$(PROJECT).hex: $(PROJECT).elf
+	$(OBJCOPY) -O ihex $< $@
+
+.PHONY: clean disasm size
 
 clean:
-	rm -f *.o *.elf *.bin
+	rm -f *.o *.elf *.bin *.hex disasm.txt
+
+disasm:
+	$(OBJDUMP) -d $(PROJECT).elf > disasm.txt
+
+size:
+	$(SIZE) $(PROJECT).elf
