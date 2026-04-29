@@ -1,37 +1,40 @@
 MEMORY
 {
-    FLASH (rx) : ORIGIN = 0x00000000, LENGTH = 16K
-    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 2K
+    FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 16K
+    RAM   (xrw): ORIGIN = 0x20000000, LENGTH = 2K
 }
 
-ENTRY(Reset_Handler)
+_estack = ORIGIN(RAM) + LENGTH(RAM);
 
 SECTIONS
 {
-    .text :
+    .vector_table :
     {
         KEEP(*(.vector_table))
+    } > FLASH
+
+    .text :
+    {
         *(.text*)
         *(.rodata*)
         . = ALIGN(4);
     } > FLASH
 
-    .data : AT(ADDR(.text) + SIZEOF(.text))
+    _sidata = LOADADDR(.data);
+    .data :
     {
-        _data_start = .;
+        _sdata = .;
         *(.data*)
         . = ALIGN(4);
-        _data_end = .;
-    } > RAM
+        _edata = .;
+    } > RAM AT> FLASH
 
     .bss :
     {
-        _bss_start = .;
+        _sbss = .;
         *(.bss*)
+        *(COMMON)
         . = ALIGN(4);
-        _bss_end = .;
+        _ebss = .;
     } > RAM
-
-    /* Stack definition */
-    _estack = ORIGIN(RAM) + LENGTH(RAM) - 4;
 }
