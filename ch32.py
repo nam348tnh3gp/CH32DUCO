@@ -5,12 +5,12 @@ https://duinocoin.com
 https://github.com/revoxhere/duino-coin
 Duino-Coin Team & Community 2019-2026
 
-FULL FIX for CH32V003:
+FULL FIX for CH32V003 (NoneOS firmware):
 - Added \n terminator to all serial writes (firmware expects newline)
 - dsrdtr=False to prevent auto-reset on port open
-- Fixed difficulty parsing (handle comma before \n)
-- Fixed elapsed time format (milliseconds, not binary)
-- Fixed result parsing from board (decimal format)
+- Nonce: binary string from firmware, int(..., 2) to decode
+- Elapsed time: microseconds binary string from firmware, /1000000 to seconds
+- DUCOID: hex string from firmware
 """
 
 from os import _exit, mkdir
@@ -1072,7 +1072,7 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
         while retries < 3:
             try:
                 debug_output(com + ': Sending hash test to the board')
-                # ===== FIX: Thêm \n vào cuối để firmware CH32V003 nhận biết kết thúc job =====
+                # ===== FIX: \n ở cuối để firmware nhận biết kết thúc job =====
                 ser.write(bytes(str(prev_hash
                                     + Settings.SEPARATOR
                                     + exp_hash
@@ -1092,7 +1092,8 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 if int(result[0], 2) != exp_result:
                    raise Exception(com + f': Incorrect result received!')
 
-                computetime = round(int(result[1], 2) / 1000000, 5)
+                # ===== FIX: Firmware gửi microseconds dưới dạng binary string =====
+                computetime = round(int(result[1], 2) / 1000000, 5)  # µs -> seconds
                 num_res = int(result[0], 2)
                 hashrate_test = round(num_res / computetime, 2)
                 break
@@ -1163,7 +1164,7 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
 
                 try:
                     debug_output(com + ': Sending job to the board')
-                    # ===== FIX: Thêm \n vào cuối để firmware CH32V003 nhận biết kết thúc job =====
+                    # ===== FIX: \n ở cuối =====
                     ser.write(bytes(str(job[0]
                                         + Settings.SEPARATOR
                                         + job[1]
@@ -1191,11 +1192,11 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 break
 
             try:
-                # ===== FIX: Board gửi kết quả dạng số thập phân, không phải nhị phân =====
-                # result[0] = nonce (decimal string)
-                # result[1] = elapsed_ms (decimal string)  
+                # ===== FIX: Firmware gửi BINARY STRING (không phải decimal) =====
+                # result[0] = nonce (binary string) -> int(..., 2)
+                # result[1] = elapsed_us (binary string, microseconds) -> int(..., 2) / 1000000
                 # result[2] = DUCOID (hex string)
-                computetime = round(int(result[1]) / 1000, 5)  # ms -> seconds
+                computetime = round(int(result[1]) / 1000000, 5)  # µs -> seconds  ← ĐÃ SỬA
                 num_res = int(result[0])
                 hashrate_t = round(num_res / computetime, 2)
 
