@@ -1,4 +1,3 @@
-// main.c – DUCO Miner NoneOS CH32V003 (UART an toàn, có timeout, chịu lỗi)
 #include <string.h>
 #include <stdlib.h>
 #include "ch32v00x.h"
@@ -9,165 +8,155 @@
 #include "duco_hash.h"
 
 void SystemInit(void);
+static void generate_ducoid(char *buf);
+static void hex_to_words(const char *hex, uint32_t *words);
+static void increment_nonce_ascii(char *nonce, uint8_t *len);
+static void send_result(uint32_t nonce, uint32_t elapsed_ms, const char *ducoid);
+static int read_job(char *last, char *newb, char *diff);
+static void IWDG_Init(void);
+static void IWDG_Feed(void);
 
-typedef uint32_t uintDiff;
+#define DIFF_MAX_STR 15
 
-static char ducoid_chars[23];
+int main(void) {
+    SystemInit();
+    delay_init();
+    uart_init(115200);       // Giữ nguyên driver UART của bạn
 
-/* ---------- DUCOID từ UID ---------- */
-static void generate_ducoid(void) {
+    char ducoid[23];
+    generate_ducoid(ducoid);
+
+    IWDG_Init();
+
+    delay_ms(2000);          // Chờ ổn định
+
+    while (1) {
+        char lastBlockHash[41], newBlockHash[41], diffStr[DIFF_MAX_STR+1];
+
+        // Đợi job từ Python client
+        if (!uart_available()) continue;   // polling nhẹ
+        if (read_job(lastBlockHash, newBlockHash, diffStr))
+            continue;                     // lỗi -> vòng lặp tiếp
+
+        uint32_t difficulty = strtoul(diffStr, NULL, 10);
+        if (difficulty == 0) difficulty = 10;
+
+        uint32_t target[5];
+        hex_to_words(newBlockHash, target);
+
+        duco_hash_state_t hash;
+        duco_hash_init(&hash, lastBlockHash);
+
+        uint32_t start_time = millis();
+        char nonce[12] = "0";
+        uint8_t nonceLen = 1;
+        uint32_t maxNonce = difficulty * 100 + 1;
+        uint32_t valid_nonce = maxNonce;
+
+        for (uint32_t i = 0; i < maxNonce; i++) {
+            if (duco_hash_try_nonce(&hash, nonce, nonceLen, target)) {
+                valid_nonce = i;
+                break;
+            }
+            increment_nonce_ascii(nonce, &nonceLen);
+        }
+        uint32_t elapsed_ms = millis() - start_time;
+
+        // Gửi kết quả
+        send_result(valid_nonce, elapsed_ms, ducoid);
+
+        IWDG_Feed();   // Feed watchdog sau mỗi job thành công
+    }
+}
+
+/* --------------- Hàm phụ trợ --------------- */
+static void generate_ducoid(char *buf) {
     uint8_t uid[8];
     unique_id_read(uid);
-    memcpy(ducoid_chars, "DUCOID", 6);
-    char *ptr = ducoid_chars + 6;
+    memcpy(buf, "DUCOID", 6);
+    char *p = buf + 6;
     for (int i = 0; i < 8; i++) {
-        *ptr++ = "0123456789ABCDEF"[uid[i] >> 4];
-        *ptr++ = "0123456789ABCDEF"[uid[i] & 0x0F];
+        *p++ = "0123456789ABCDEF"[uid[i] >> 4];
+        *p++ = "0123456789ABCDEF"[uid[i] & 0x0F];
     }
-    *ptr = '\0';
+    *p = '\0';
 }
 
-/* ---------- Chuyển hex 40 ký tự -> mảng 5 word (big‑endian) ---------- */
-#define HEX_NIBBLE(c) (((c) - '0' < 10) ? ((c) - '0') : ((c) - 'a' + 10))
-
+#define HEX_NIB(c) ((c) < 'a' ? (c) - '0' : (c) - 'a' + 10)
 static void hex_to_words(const char *hex, uint32_t *words) {
-    for (uint8_t w = 0; w < SHA1_HASH_LEN / 4; w++) {
-        const char *src = hex + w * 8;
-        words[w] = ((HEX_NIBBLE(src[0]) << 4) | HEX_NIBBLE(src[1])) << 24 |
-                   ((HEX_NIBBLE(src[2]) << 4) | HEX_NIBBLE(src[3])) << 16 |
-                   ((HEX_NIBBLE(src[4]) << 4) | HEX_NIBBLE(src[5])) << 8 |
-                   ((HEX_NIBBLE(src[6]) << 4) | HEX_NIBBLE(src[7]));
+    for (int w = 0; w < 5; w++) {
+        const char *s = hex + w * 8;
+        words[w] = ((HEX_NIB(s[0]) << 4 | HEX_NIB(s[1])) << 24) |
+                   ((HEX_NIB(s[2]) << 4 | HEX_NIB(s[3])) << 16) |
+                   ((HEX_NIB(s[4]) << 4 | HEX_NIB(s[5])) << 8) |
+                   (HEX_NIB(s[6]) << 4 | HEX_NIB(s[7]));
     }
 }
 
-/* ---------- Tăng nonce dạng chuỗi ASCII ---------- */
-static void increment_nonce_ascii(char *nonceStr, uint8_t *nonceLen) {
-    int8_t i = *nonceLen - 1;
+static void increment_nonce_ascii(char *nonce, uint8_t *len) {
+    int8_t i = *len - 1;
     for (; i >= 0; --i) {
-        if (nonceStr[i] != '9') { nonceStr[i]++; return; }
-        nonceStr[i] = '0';
+        if (nonce[i] < '9') { nonce[i]++; return; }
+        nonce[i] = '0';
     }
-    for (uint8_t j = *nonceLen; j > 0; --j) nonceStr[j] = nonceStr[j-1];
-    nonceStr[0] = '1'; (*nonceLen)++; nonceStr[*nonceLen] = '\0';
+    for (int j = *len; j > 0; --j) nonce[j] = nonce[j-1];
+    nonce[0] = '1'; (*len)++; nonce[*len] = '\0';
 }
 
-/* ---------- itoa nhẹ (decimal) ---------- */
-static char* u32_to_str(uint32_t num, char* str) {
-    char temp[12];
-    uint8_t i = 0;
-    if (num == 0) {
-        str[0] = '0'; str[1] = '\0';
-        return str;
-    }
-    while (num > 0) {
-        temp[i++] = '0' + (num % 10);
-        num /= 10;
-    }
+static char* u32_to_str(uint32_t num, char *str) {
+    char tmp[12]; uint8_t i = 0;
+    if (!num) { str[0] = '0'; str[1] = '\0'; return str; }
+    while (num) { tmp[i++] = '0' + (num % 10); num /= 10; }
     uint8_t j = 0;
-    while (i > 0) str[j++] = temp[--i];
+    while (i) str[j++] = tmp[--i];
     str[j] = '\0';
     return str;
 }
 
-/* ---------- Gửi kết quả (số thập phân) ---------- */
-static void send_result(uintDiff nonce, uint32_t elapsed_ms) {
+static void send_result(uint32_t nonce, uint32_t elapsed_ms, const char *ducoid) {
     char buf[12];
     uart_puts(u32_to_str(nonce, buf));
     uart_putc(',');
     uart_puts(u32_to_str(elapsed_ms, buf));
     uart_putc(',');
-    uart_puts(ducoid_chars);
+    uart_puts(ducoid);
     uart_puts("\n");
 }
 
-/**
- * Đọc một job từ UART (polling, có timeout).
- * Job có dạng: lastBlockHash(40),newBlockHash(40),difficulty,\n
- * Trả về 0 nếu thành công, 1 nếu lỗi/timeout.
- */
-static int read_job(char *lastBlockHash, char *newBlockHash, char *diffStr) {
+static int read_job(char *last, char *newb, char *diff) {
     char c;
-    
-    // 1. Đọc lastBlockHash (40 ký tự hex)
-    for (int i = 0; i < 40; i++) {
+    // Đọc 40 ký tự last
+    for (int i = 0; i < 40; i++)
         if (!uart_getc_timeout(&c, 2000)) return 1;
-        lastBlockHash[i] = c;
-    }
-    lastBlockHash[40] = '\0';
-    
-    // 2. Dấu phẩy thứ nhất
+        else last[i] = c;
+    last[40] = 0;
     if (!uart_getc_timeout(&c, 1000) || c != ',') return 1;
-    
-    // 3. Đọc newBlockHash (40 ký tự hex)
-    for (int i = 0; i < 40; i++) {
+    for (int i = 0; i < 40; i++)
         if (!uart_getc_timeout(&c, 2000)) return 1;
-        newBlockHash[i] = c;
-    }
-    newBlockHash[40] = '\0';
-    
-    // 4. Dấu phẩy thứ hai
+        else newb[i] = c;
+    newb[40] = 0;
     if (!uart_getc_timeout(&c, 1000) || c != ',') return 1;
-    
-    // 5. Đọc difficulty – bỏ qua dấu phẩy cuối cùng, dừng ở '\n'
     int dpos = 0;
-    while (1) {
+    while (dpos < DIFF_MAX_STR) {
         if (!uart_getc_timeout(&c, 2000)) return 1;
-        if (c == '\n') break;           // kết thúc dòng
-        if (c == '\r') continue;        // bỏ qua carriage return nếu có
-        if (c == ',') continue;         // bỏ qua dấu phẩy phân cách cuối cùng
-        if (dpos < 15) {
-            diffStr[dpos++] = c;
-        }
+        if (c == '\n' || c == '\r') break;
+        if (c == ',') continue;
+        diff[dpos++] = c;
     }
-    diffStr[dpos] = '\0';
-    
-    // Không cần xóa buffer thừa vì đã đọc đến newline
+    diff[dpos] = 0;
+    // Xả hết đến '\n'
+    while (c != '\n')
+        if (!uart_getc_timeout(&c, 500)) break;
     return 0;
 }
 
-/* ---------- main ---------- */
-int main(void) {
-    SystemInit();
-    delay_init();          // TIM2 cho millis()
-    uart_init(115200);
-    generate_ducoid();
-    delay_ms(2000);        // Chờ ổn định
+static void IWDG_Init(void) {
+    IWDG->CTLR = 0x5555;
+    IWDG->PSCR = 0x06;    // /256 => 500 Hz
+    IWDG->RLDR = 2000;    // 4 giây
+    IWDG->CTLR = 0xCCCC;
+}
 
-    while (1) {
-        char lastBlockHash[41];
-        char newBlockHash[41];
-        char diffStr[16];
-        
-        // Đợi có dữ liệu trước khi đọc cả job (tránh timeout vô ích)
-        if (!uart_available()) continue;
-        
-        if (read_job(lastBlockHash, newBlockHash, diffStr)) {
-            // Lỗi hoặc timeout -> bỏ qua, xả hết buffer rồi thử lại
-            while (uart_available()) uart_getc();
-            continue;
-        }
-        
-        uintDiff difficulty = strtoul(diffStr, NULL, 10);
-        if (difficulty == 0) difficulty = 10;
-        
-        uint32_t targetWords[SHA1_HASH_LEN / 4];
-        hex_to_words(newBlockHash, targetWords);
-        
-        duco_hash_state_t hash;
-        duco_hash_init(&hash, lastBlockHash);
-        
-        uint32_t start_time = millis();
-        
-        char nonceStr[11] = "0";
-        uint8_t nonceLen = 1;
-        uintDiff maxNonce = difficulty * 100 + 1;
-        uintDiff nonce = 0;
-        for (; nonce < maxNonce; nonce++) {
-            if (duco_hash_try_nonce(&hash, nonceStr, nonceLen, targetWords)) break;
-            increment_nonce_ascii(nonceStr, &nonceLen);
-        }
-        
-        uint32_t elapsed_ms = millis() - start_time;   // đơn vị mili giây
-        send_result(nonce, elapsed_ms);
-    }
+static void IWDG_Feed(void) {
+    IWDG->CTLR = 0xAAAA;
 }
