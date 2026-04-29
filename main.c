@@ -51,18 +51,6 @@
 #define ESIG_UNIID3     (*(volatile uint32_t *)(ESIG_BASE + 0x10)) // UID[95:64]
 
 //=============================================================================
-// memcpy implementation (avoid pulling in libc)
-//=============================================================================
-static void *my_memcpy(void *dest, const void *src, unsigned int n) {
-    unsigned char *d = (unsigned char *)dest;
-    const unsigned char *s = (const unsigned char *)src;
-    while (n--) {
-        *d++ = *s++;
-    }
-    return dest;
-}
-
-//=============================================================================
 // Hardware configuration
 //=============================================================================
 static void SystemClock_Init(void) {
@@ -172,8 +160,13 @@ static void generate_ducoid(void) {
     uid8[6] = (uint8_t)((uid_high >> 16) & 0xFF);
     uid8[7] = (uint8_t)(uid_high >> 24);
 
-    const char prefix[] = "DUCOID";
-    my_memcpy(ducoid_chars, prefix, 6);
+    // Write "DUCOID" prefix manually (avoid memcpy)
+    ducoid_chars[0] = 'D';
+    ducoid_chars[1] = 'U';
+    ducoid_chars[2] = 'C';
+    ducoid_chars[3] = 'O';
+    ducoid_chars[4] = 'I';
+    ducoid_chars[5] = 'D';
     
     char *ptr = ducoid_chars + 6;
     for (int i = 0; i < 8; i++) {
