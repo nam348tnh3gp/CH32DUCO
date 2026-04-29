@@ -6,6 +6,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+// Thêm dòng này vào đầu main.c, sau #include:
+volatile uint32_t tick_ms = 0;
 
 // ================== Minimal libc (no register asm) ==================
 static void* simple_memcpy(void* dst, const void* src, uint32_t n) {
