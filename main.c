@@ -298,15 +298,15 @@ int main(void) {
         uintDiff maxN = diff * 100u + 1u;
         if (diff > 655u) maxN = 0;
 
-        uint32_t st = STK_CNTL;  // dùng SysTick counter thay vì micros()
+        uint32_t st = STK_CNTL;
         uintDiff res = ducos1a_mine(last, target, maxN);
-        uint32_t el = st - STK_CNTL;  // số tick đã trôi qua (đếm xuống)
+        uint32_t el = st - STK_CNTL;
 
         usart_print_bin(res);
         usart_putc(',');
         usart_print_bin(el);
         usart_putc(',');
-        usart_print(ducoid_chars);
+        usart_print(ducoid);       // ← ĐÃ FIX: ducoid thay vì ducoid_chars
         usart_putc('\n');
         continue;
 
