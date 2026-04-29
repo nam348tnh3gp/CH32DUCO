@@ -1,5 +1,5 @@
 /* ============================================================
- * CH32V003 startup – minimal NoneOS
+ * CH32V003 startup – RV32EC (16 registers only)
  * ============================================================ */
 
     .section .init
@@ -11,33 +11,33 @@ _start:
     la sp, _estack
 
     /* Copy .data from FLASH to RAM */
-    la t0, _data_start
-    la t1, _data_end
-    la t2, _data_loadaddr
-    beq t0, t1, .L_skip_data
+    la a0, _data_start
+    la a1, _data_end
+    la a2, _data_loadaddr
+    beq a0, a1, .L_skip_data
 .L_copy_data:
-    lw t3, 0(t2)
-    sw t3, 0(t0)
-    addi t0, t0, 4
-    addi t2, t2, 4
-    blt t0, t1, .L_copy_data
+    lw a3, 0(a2)
+    sw a3, 0(a0)
+    addi a0, a0, 4
+    addi a2, a2, 4
+    blt a0, a1, .L_copy_data
 .L_skip_data:
 
     /* Zero .bss */
-    la t0, _bss_start
-    la t1, _bss_end
-    beq t0, t1, .L_skip_bss
+    la a0, _bss_start
+    la a1, _bss_end
+    beq a0, a1, .L_skip_bss
 .L_zero_bss:
-    sw zero, 0(t0)
-    addi t0, t0, 4
-    blt t0, t1, .L_zero_bss
+    sw zero, 0(a0)
+    addi a0, a0, 4
+    blt a0, a1, .L_zero_bss
 .L_skip_bss:
 
     /* Jump to main */
     j main
 
 
-/* ===== Default interrupt handler (REQUIRED – prevents undefined refs) ===== */
+/* ===== Default interrupt handlers ===== */
     .section .text.Default_Handler, "ax"
     .weak   NMI_Handler
     .weak   HardFault_Handler
