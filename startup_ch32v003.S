@@ -1,5 +1,6 @@
 /* ============================================================
  * CH32V003 startup – RV32EC (16 registers only)
+ * SysTick_Handler properly increments tick_ms
  * ============================================================ */
 
     .section .init
@@ -37,11 +38,27 @@ _start:
     j main
 
 
+/* ===== SysTick Handler – increment tick_ms ===== */
+    .section .text.SysTick_Handler, "ax"
+    .globl  SysTick_Handler
+    .type   SysTick_Handler, @function
+
+SysTick_Handler:
+    /* Load address of tick_ms into a4 */
+    la a4, tick_ms
+    /* Load current value */
+    lw a5, 0(a4)
+    /* Increment */
+    addi a5, a5, 1
+    /* Store back */
+    sw a5, 0(a4)
+    ret
+
+
 /* ===== Default interrupt handlers ===== */
     .section .text.Default_Handler, "ax"
     .weak   NMI_Handler
     .weak   HardFault_Handler
-    .weak   SysTick_Handler
     .weak   SW_Handler
     .weak   WWDG_Handler
     .weak   PVD_Handler
@@ -72,7 +89,6 @@ _start:
 
 NMI_Handler:
 HardFault_Handler:
-SysTick_Handler:
 SW_Handler:
 WWDG_Handler:
 PVD_Handler:
