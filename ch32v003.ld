@@ -1,40 +1,48 @@
+/* ============================================================
+ * CH32V003 Linker Script (RV32EC, 16KB Flash, 2KB RAM)
+ * ============================================================ */
+
 MEMORY
 {
-    FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 16K
-    RAM   (xrw): ORIGIN = 0x20000000, LENGTH = 2K
+    FLASH  (rx) : ORIGIN = 0x08000000, LENGTH = 16K
+    RAM   (xrw) : ORIGIN = 0x20000000, LENGTH = 2K
 }
 
 _estack = ORIGIN(RAM) + LENGTH(RAM);
 
+ENTRY(_start)
+
 SECTIONS
 {
-    .vector_table :
-    {
-        KEEP(*(.vector_table))
-    } > FLASH
-
+    /* Code + read-only data */
     .text :
     {
-        *(.text*)
-        *(.rodata*)
-        . = ALIGN(4);
+        KEEP(*(.init))           /* startup */
+        KEEP(*(.text._start))
+        *(.text)
+        *(.text.*)
+        *(.rodata)
+        *(.rodata.*)
     } > FLASH
 
-    _sidata = LOADADDR(.data);
+    /* Initialized data */
     .data :
     {
-        _sdata = .;
-        *(.data*)
-        . = ALIGN(4);
-        _edata = .;
-    } > RAM AT> FLASH
+        _data_start = .;
+        *(.data)
+        *(.data.*)
+        _data_end = .;
+    } > RAM AT > FLASH
 
+    _data_loadaddr = LOADADDR(.data);
+
+    /* Zero-initialized data */
     .bss :
     {
-        _sbss = .;
-        *(.bss*)
+        _bss_start = .;
+        *(.bss)
+        *(.bss.*)
         *(COMMON)
-        . = ALIGN(4);
-        _ebss = .;
+        _bss_end = .;
     } > RAM
 }
