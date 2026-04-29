@@ -1,4 +1,4 @@
-// main.c – DUCO Miner NoneOS CH32V003 (thời gian thật, đầy đủ)
+// main.c – DUCO Miner NoneOS CH32V003 (UART đọc an toàn, xử lý ORE, timeout)
 #include <string.h>
 #include <stdlib.h>
 #include "ch32v00x.h"
@@ -63,32 +63,68 @@ static void send_result(uintDiff result, uint32_t elapsed) {
     uart_puts("\n");
 }
 
+// Đọc một dòng job từ UART với timeout. Trả về 0 nếu thành công, 1 nếu lỗi/timeout.
+static int read_job(char *lastBlockHash, char *newBlockHash, char *diffStr) {
+    char c;
+    
+    // Đọc lastBlockHash (40 ký tự)
+    for (int i = 0; i < 40; i++) {
+        if (!uart_getc_timeout(&c, 2000)) return 1;
+        lastBlockHash[i] = c;
+    }
+    lastBlockHash[40] = '\0';
+    
+    // Dấu phẩy
+    if (!uart_getc_timeout(&c, 1000) || c != ',') return 1;
+    
+    // Đọc newBlockHash (40 ký tự)
+    for (int i = 0; i < 40; i++) {
+        if (!uart_getc_timeout(&c, 2000)) return 1;
+        newBlockHash[i] = c;
+    }
+    newBlockHash[40] = '\0';
+    
+    // Dấu phẩy
+    if (!uart_getc_timeout(&c, 1000) || c != ',') return 1;
+    
+    // Đọc difficulty (chuỗi số) cho đến dấu phẩy
+    int dpos = 0;
+    while (1) {
+        if (!uart_getc_timeout(&c, 1000)) return 1;
+        if (c == ',') break;
+        if (dpos < 15) {
+            diffStr[dpos++] = c;
+        }
+    }
+    diffStr[dpos] = '\0';
+    
+    // Xóa buffer thừa (nếu có)
+    while (uart_available()) {
+        uart_getc(); // đọc bỏ
+    }
+    return 0; // thành công
+}
+
 int main(void) {
     SystemInit();
     delay_init();          // Khởi tạo TIM2 cho millis chính xác
     uart_init(115200);
     generate_ducoid();
-    delay_ms(2000);        // Lúc này system_tick đã chạy
+    delay_ms(2000);        // Đợi ổn định
 
     while (1) {
+        // Chờ có ít nhất một byte trong buffer trước khi bắt đầu đọc job
         if (!uart_available()) continue;
 
-        char lastBlockHash[41] = {0};
-        for (int i = 0; i < 40; i++) lastBlockHash[i] = uart_getc();
-        if (uart_getc() != ',') continue;
-
-        char newBlockHash[41] = {0};
-        for (int i = 0; i < 40; i++) newBlockHash[i] = uart_getc();
-        if (uart_getc() != ',') continue;
-
-        char diffStr[16] = {0};
-        int dpos = 0;
-        while (1) {
-            char c = uart_getc();
-            if (c == ',') break;
-            diffStr[dpos++] = c;
+        char lastBlockHash[41];
+        char newBlockHash[41];
+        char diffStr[16];
+        
+        if (read_job(lastBlockHash, newBlockHash, diffStr)) {
+            // Lỗi hoặc timeout, bỏ qua job này, xả buffer nếu còn
+            while (uart_available()) uart_getc();
+            continue;
         }
-        while (uart_available()) uart_getc();
 
         uintDiff difficulty = strtoul(diffStr, NULL, 10);
         if (difficulty == 0) difficulty = 10;
