@@ -57,7 +57,7 @@ jobs:
 
       - name: 🔍 Verify DUCOID variable present
         run: |
-          if riscv-none-elf-nm firmware.elf | grep -w "ducoid_chars"; then
+          if riscv-none-elf-nm firmware.elf | grep -w "ducoid"; then
             echo "✅ ducoid_chars variable found – DUCOID logic present"
           else
             echo "❌ ducoid_chars variable missing – firmware may be incomplete!"
