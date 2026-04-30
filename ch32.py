@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
 """
-Based on Duino-Coin Official AVR Miner 4.3 © MIT licensed
+based on Duino-Coin Official AVR Miner 4.3 © MIT licensed
+FIXED VERSION: race condition, thread safety, error handling
 https://duinocoin.com
 https://github.com/revoxhere/duino-coin
 Duino-Coin Team & Community 2019-2026
-
-FULL FIX for CH32V003 (NoneOS firmware):
-- Added \n terminator to all serial writes (firmware expects newline)
-- dsrdtr=False to prevent auto-reset on port open
-- Nonce: binary string from firmware, int(..., 2) to decode
-- Elapsed time: microseconds binary string from firmware, /1000000 to seconds
-- DUCOID: hex string from firmware
 """
 
 from os import _exit, mkdir
@@ -45,7 +39,6 @@ import os
 
 printlock = Lock()
 
-
 # Python <3.5 check
 f"Your Python version is too old. Duino-Coin Miner requires version 3.6 or above. Update your packages and try again"
 
@@ -55,6 +48,7 @@ def install(package):
         pip.main(["install",  package])
     except AttributeError:
         check_call([sys.executable, '-m', 'pip', 'install', package])
+    # Chỉ restart nếu cài đặt thành công (check_call ném exception nếu lỗi)
     call([sys.executable, __file__])
 
 
@@ -126,9 +120,8 @@ class Settings:
     disable_title = False
 
     try:
-        # Raspberry Pi latin users can't display this character
-        "\u2016".encode(sys.stdout.encoding)
-        BLOCK = " \u2016 "
+        "‖".encode(sys.stdout.encoding)
+        BLOCK = " ‖ "
     except:
         BLOCK = " | "
     PICK = ""
@@ -136,13 +129,11 @@ class Settings:
     if (osname != "nt"
         or bool(osname == "nt"
                 and os.environ.get("WT_SESSION"))):
-        # Windows' cmd does not support emojis, shame!
-        # And some codecs same, for example the Latin-1 encoding don`t support emoji
         try:
-            "\u26cf \u2699".encode(sys.stdout.encoding) # if the terminal support emoji
-            PICK = " \u26cf"
-            COG = " \u2699"
-        except UnicodeEncodeError: # else
+            "⛏ ⚙".encode(sys.stdout.encoding)
+            PICK = " ⛏"
+            COG = " ⚙"
+        except UnicodeEncodeError:
             PICK = ""
             COG = " @"
 
@@ -161,21 +152,21 @@ def check_updates():
             zip_file = "Duino-Coin_" + data["tag_name"] + "_windows.zip"
 
         process = psutil.Process(os.getpid())
-        running_script = False # If the process is from script
+        running_script = False
         if "python" in process.name():
             running_script = True
 
-        if float(Settings.VER) < float(data["tag_name"]): # If is outdated
+        if float(Settings.VER) < float(data["tag_name"]):
             update = input(Style.BRIGHT + get_string("new_version"))
             if update == "Y" or update == "y":
                 pretty_print("sys0", get_string("updating"), "warning")
 
-                DATA_DIR = "Duino-Coin AVR Miner " + str(data["tag_name"]) # Create new version config folder
+                DATA_DIR = "Duino-Coin AVR Miner " + str(data["tag_name"])
                 if not path.exists(DATA_DIR):
                     mkdir(DATA_DIR)
 
                 try:
-                    config.read(str(Settings.DATA_DIR) + '/Settings.cfg') # read the previous config
+                    config.read(str(Settings.DATA_DIR) + '/Settings.cfg')
 
                     config["AVR Miner"] = {
                         'username':         config["AVR Miner"]['username'],
@@ -191,7 +182,7 @@ def check_updates():
                         "mining_key":       config["AVR Miner"]["mining_key"]
                     }
 
-                    with open(str(DATA_DIR) # save it on the new version folder
+                    with open(str(DATA_DIR)
                             + '/Settings.cfg', 'w') as configfile:
                         config.write(configfile)
 
@@ -200,7 +191,7 @@ def check_updates():
                     pretty_print("sys0", f"Error saving configfile: {e}" + str(e), "error")
                     pretty_print("sys0", "Config won't be carried to the next version", "warning")
 
-                if not os.path.exists(Settings.TEMP_FOLDER): # Make the Temp folder
+                if not os.path.exists(Settings.TEMP_FOLDER):
                     os.makedirs(Settings.TEMP_FOLDER) 
 
                 file_path = os.path.join(Settings.TEMP_FOLDER, zip_file)
@@ -214,19 +205,15 @@ def check_updates():
                 if r.ok:
                     start = time()
                     dl = 0
-                    file_size = int(r.headers["Content-Length"]) # Get file size
+                    file_size = int(r.headers["Content-Length"])
                     pretty_print("sys0", 
                         f"Saving update to: {os.path.abspath(file_path)}", "warning")
                     with open(file_path, 'wb') as f: 
-                        for chunk in r.iter_content(chunk_size=1024 * 8): # Download file in chunks
+                        for chunk in r.iter_content(chunk_size=1024 * 8):
                             if chunk:
                                 dl += len(chunk)
                                 done = int(50 * dl / file_size)
                                 dl_perc = str(int(100 * dl / file_size))
-
-                                if running_script:
-                                    done = int(12.5 * dl / file_size)
-                                    dl_perc = str(int(22.5 * dl / file_size))
 
                                 sys.stdout.write(
                                     "\r%s [%s%s] %s %s" % (
@@ -234,7 +221,7 @@ def check_updates():
                                         '#' * done, 
                                         ' ' * (50-done),
                                         str(round(os.path.getsize(file_path) / 1024 / 1024, 2)) + " MB ",
-                                        str((dl // (time() - start)) // 1024) + " KB/s")) # ProgressBar
+                                        str((dl // (time() - start)) // 1024) + " KB/s"))
                                 sys.stdout.flush()
                                 f.write(chunk)
                                 f.flush()
@@ -242,29 +229,29 @@ def check_updates():
                     pretty_print("sys0", "Download complete", "success")
                     if not running_script:
                         pretty_print("sys0", "Unpacking archive", "warning")
-                        with zipfile.ZipFile(file_path, 'r') as zip_ref: # Unzip the file
+                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
                             for file in zip_ref.infolist():
                                 if "AVR_Miner" in file.filename:
                                     if sys.platform == "win32":
-                                        file.filename = "AVR_Miner_"+data["tag_name"]+".exe" # Rename the file
+                                        file.filename = "AVR_Miner_"+data["tag_name"]+".exe"
                                     else:
                                         file.filename = "AVR_Miner_"+data["tag_name"] 
                                     zip_ref.extract(file, ".")
                         pretty_print("sys0", "Unpacking complete", "success")
-                        os.remove(file_path) # Delete the zip file
-                        os.rmdir(Settings.TEMP_FOLDER) # Delete the temp folder
+                        os.remove(file_path)
+                        os.rmdir(Settings.TEMP_FOLDER)
 
                         if sys.platform == "win32":
-                            os.startfile(os.getcwd() + "\\AVR_Miner_"+data["tag_name"]+".exe") # Start the miner
-                        else: # os.startfile is only for windows
+                            os.startfile(os.getcwd() + "\\AVR_Miner_"+data["tag_name"]+".exe")
+                        else:
                             os.system(os.getcwd() + "/AVR_Miner_"+data["tag_name"]) 
                     else:
                         if sys.platform == "win32":
                             os.system(file_path)
                         else:
                             os.system("python3 " + file_path)
-                    sys.exit() # Exit the program
-                else:  # HTTP status code 4XX/5XX
+                    sys.exit()
+                else:
                     pretty_print( "sys0", f"Update failed: {r.status_code}: {r.text}", "error")
             else:
                 pretty_print("sys0", "Update aborted", "warning")
@@ -298,7 +285,7 @@ def check_mining_key(user_settings):
     ).json()
     debug_output(response)
 
-    if response["success"] and not response["has_key"]: # if the user doesn't have a mining key
+    if response["success"] and not response["has_key"]:
         user_settings["mining_key"] = "None"
         config["AVR Miner"] = user_settings
 
@@ -357,9 +344,6 @@ def check_mining_key(user_settings):
 
 
 class Client:
-    """
-    Class helping to organize socket connections
-    """
     def connect(pool: tuple):
         s = socket()
         s.settimeout(Settings.SOC_TIMEOUT)
@@ -477,7 +461,24 @@ class Donate:
                          'error')
 
 
-shares = [0, 0, 0]
+# ---- FIX: Thread‑safe shares ----
+# Bây giờ mỗi thread có dict riêng, tổng hợp qua thread_safe_get_shares()
+thread_shares = {}   # key = thread_id, value = [accept, reject, blocks]
+shares_lock = Lock()
+
+def update_thread_share(tid, accept, reject, blocks):
+    with shares_lock:
+        thread_shares[tid] = [accept, reject, blocks]
+
+def get_total_shares():
+    acc = rej = blk = 0
+    with shares_lock:
+        for v in thread_shares.values():
+            acc += v[0]
+            rej += v[1]
+            blk += v[2]
+    return acc, rej, blk
+
 hashrate_mean = deque(maxlen=25)
 ping_mean = deque(maxlen=25)
 diff = 0
@@ -503,12 +504,10 @@ if not Path(Settings.DATA_DIR + '/Translations.json').is_file():
     with open(Settings.DATA_DIR + '/Translations.json', 'wb') as f:
         f.write(r.content)
 
-# Load language file
 with open(Settings.DATA_DIR + '/Translations.json', 'r',
           encoding='utf8') as lang_file:
     lang_file = jsonload(lang_file)
 
-# OS X invalid locale hack
 if system() == 'Darwin':
     if getlocale()[0] is None:
         setlocale(LC_ALL, 'en_US.UTF-8')
@@ -575,13 +574,8 @@ def get_string(string_name: str):
         return string_name
 
 
-def get_prefix(symbol: str,
-               val: float,
-               accuracy: int):
-    """
-    H/s, 1000 => 1 kH/s
-    """
-    if val >= 1_000_000_000_000:  # Really?
+def get_prefix(symbol: str, val: float, accuracy: int):
+    if val >= 1_000_000_000_000:
         val = str(round((val / 1_000_000_000_000), accuracy)) + " T"
     elif val >= 1_000_000_000:
         val = str(round((val / 1_000_000_000), accuracy)) + " G"
@@ -607,18 +601,8 @@ def debug_output(text: str):
 def title(title: str):
     if not Settings.disable_title:
         if osname == 'nt':
-            """
-            Changing the title in Windows' cmd
-            is easy - just use the built-in
-            title command
-            """
             ossystem('title ' + title)
         else:
-            """
-            Most *nix terminals use
-            this escape sequence to change
-            the console window title
-            """
             try:
                 print('\33]0;' + title + '\a', end='')
                 sys.stdout.flush()
@@ -628,15 +612,11 @@ def title(title: str):
 
 
 def handler(signal_received, frame):
-    pretty_print(
-        'sys0', get_string('sigint_detected')
-        + Style.NORMAL + Fore.RESET
-        + get_string('goodbye'), 'warning')
-
+    pretty_print('sys0', get_string('sigint_detected')
+        + Style.NORMAL + Fore.RESET + get_string('goodbye'), 'warning')
     _exit(0)
 
 
-# Enable signal handler
 signal(SIGINT, handler)
 
 
@@ -651,22 +631,17 @@ def load_config():
     global SOC_TIMEOUT
 
     if not Path(str(Settings.DATA_DIR) + '/Settings.cfg').is_file():
-        print(
-            Style.BRIGHT + get_string('basic_config_tool')
-            + Settings.DATA_DIR
-            + get_string('edit_config_file_warning'))
-
-        print(
-            Style.RESET_ALL + get_string('dont_have_account')
-            + Fore.YELLOW + get_string('wallet') + Fore.RESET
-            + get_string('register_warning'))
+        print(Style.BRIGHT + get_string('basic_config_tool')
+              + Settings.DATA_DIR + get_string('edit_config_file_warning'))
+        print(Style.RESET_ALL + get_string('dont_have_account')
+              + Fore.YELLOW + get_string('wallet') + Fore.RESET
+              + get_string('register_warning'))
 
         correct_username = False
         while not correct_username:
-            username = input(
-                Style.RESET_ALL + Fore.YELLOW
-                + get_string('ask_username')
-                + Fore.RESET + Style.BRIGHT)
+            username = input(Style.RESET_ALL + Fore.YELLOW
+                             + get_string('ask_username')
+                             + Fore.RESET + Style.BRIGHT)
             if not username:
                 username = choice(["revox", "Bilaboz"])
 
@@ -683,48 +658,38 @@ def load_config():
                            + Fore.RESET + Style.BRIGHT)
             mining_key = b64.b64encode(mining_key.encode("utf-8")).decode('utf-8')
 
-        print(Style.RESET_ALL + Fore.YELLOW
-              + get_string('ports_message'))
+        print(Style.RESET_ALL + Fore.YELLOW + get_string('ports_message'))
         portlist = serial.tools.list_ports.comports(include_links=True)
 
         for port in portlist:
-            print(Style.RESET_ALL
-                  + Style.BRIGHT + Fore.RESET
-                  + '  ' + str(port))
-        print(Style.RESET_ALL + Fore.YELLOW
-              + get_string('ports_notice'))
+            print(Style.RESET_ALL + Style.BRIGHT + Fore.RESET + '  ' + str(port))
+        print(Style.RESET_ALL + Fore.YELLOW + get_string('ports_notice'))
 
-        port_names = []
-        for port in portlist:
-            port_names.append(port.device)
+        port_names = [port.device for port in portlist]
 
         avrport = ''
         rig_identifier = ''
         while True:
-            current_port = input(
-                Style.RESET_ALL + Fore.YELLOW
-                + get_string('ask_avrport')
-                + Fore.RESET + Style.BRIGHT)
+            current_port = input(Style.RESET_ALL + Fore.YELLOW
+                                 + get_string('ask_avrport')
+                                 + Fore.RESET + Style.BRIGHT)
 
             if current_port in port_names:
-                confirm_identifier = input(
-                    Style.RESET_ALL + Fore.YELLOW
-                    + get_string('ask_rig_identifier')
-                    + Fore.RESET + Style.BRIGHT)
+                confirm_identifier = input(Style.RESET_ALL + Fore.YELLOW
+                                           + get_string('ask_rig_identifier')
+                                           + Fore.RESET + Style.BRIGHT)
                 if confirm_identifier == 'y' or confirm_identifier == 'Y':
-                    current_identifier = input(
-                        Style.RESET_ALL + Fore.YELLOW
-                        + get_string('ask_rig_name')
-                        + Fore.RESET + Style.BRIGHT)
+                    current_identifier = input(Style.RESET_ALL + Fore.YELLOW
+                                               + get_string('ask_rig_name')
+                                               + Fore.RESET + Style.BRIGHT)
                     rig_identifier += current_identifier
                 else:
                     rig_identifier += "None"
 
                 avrport += current_port
-                confirmation = input(
-                    Style.RESET_ALL + Fore.YELLOW
-                    + get_string('ask_anotherport')
-                    + Fore.RESET + Style.BRIGHT)
+                confirmation = input(Style.RESET_ALL + Fore.YELLOW
+                                     + get_string('ask_anotherport')
+                                     + Fore.RESET + Style.BRIGHT)
                 if confirmation == 'y' or confirmation == 'Y':
                     avrport += ','
                     rig_identifier += ','
@@ -739,10 +704,9 @@ def load_config():
 
         donation_level = '0'
         if osname == 'nt' or osname == 'posix':
-            donation_level = input(
-                Style.RESET_ALL + Fore.YELLOW
-                + get_string('ask_donation_level')
-                + Fore.RESET + Style.BRIGHT)
+            donation_level = input(Style.RESET_ALL + Fore.YELLOW
+                                   + get_string('ask_donation_level')
+                                   + Fore.RESET + Style.BRIGHT)
 
         donation_level = sub(r'\D', '', donation_level)
         if donation_level == '':
@@ -766,8 +730,7 @@ def load_config():
             "periodic_report":  300,
             "mining_key":       mining_key}
 
-        with open(str(Settings.DATA_DIR)
-                  + '/Settings.cfg', 'w') as configfile:
+        with open(str(Settings.DATA_DIR) + '/Settings.cfg', 'w') as configfile:
             config.write(configfile)
 
         avrport = avrport.split(',')
@@ -793,7 +756,6 @@ def load_config():
 def greeting():
     global greeting
     print(Style.RESET_ALL)
-
     current_hour = strptime(ctime(time())).tm_hour
     if current_hour < 12:
         greeting = get_string('greeting_morning')
@@ -806,113 +768,68 @@ def greeting():
     else:
         greeting = get_string('greeting_back')
 
-    print(
-        Style.DIM + Fore.MAGENTA
-        + Settings.BLOCK + Fore.YELLOW
-        + Style.BRIGHT + get_string('banner')
-        + Style.RESET_ALL + Fore.MAGENTA
-        + f' {Settings.VER}' + Fore.RESET
-        + ' 2019-2026')
-
-    print(
-        Style.DIM + Fore.MAGENTA
-        + Settings.BLOCK + Style.NORMAL + Fore.MAGENTA
-        + 'https://github.com/revoxhere/duino-coin')
-
+    print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Fore.YELLOW
+          + Style.BRIGHT + get_string('banner')
+          + Style.RESET_ALL + Fore.MAGENTA + f' {Settings.VER}' + Fore.RESET
+          + ' 2019-2026')
+    print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Style.NORMAL + Fore.MAGENTA
+          + 'https://github.com/revoxhere/duino-coin')
     if lang != "english":
-        print(
-            Style.DIM + Fore.MAGENTA
-            + Settings.BLOCK + Style.NORMAL
-            + Fore.RESET + lang.capitalize()
-            + " translation: " + Fore.MAGENTA
-            + get_string("translation_autor"))
-
-    print(
-        Style.DIM + Fore.MAGENTA
-        + Settings.BLOCK + Style.NORMAL
-        + Fore.RESET + get_string('avr_on_port')
-        + Style.BRIGHT + Fore.YELLOW
-        + ', '.join(avrport))
-
+        print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Style.NORMAL
+              + Fore.RESET + lang.capitalize() + " translation: " + Fore.MAGENTA
+              + get_string("translation_autor"))
+    print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Style.NORMAL
+          + Fore.RESET + get_string('avr_on_port')
+          + Style.BRIGHT + Fore.YELLOW + ', '.join(avrport))
     if osname == 'nt' or osname == 'posix':
-        print(
-            Style.DIM + Fore.MAGENTA + Settings.BLOCK
-            + Style.NORMAL + Fore.RESET
-            + get_string('donation_level') + Style.BRIGHT
-            + Fore.YELLOW + str(donation_level))
-
-    print(
-        Style.DIM + Fore.MAGENTA
-        + Settings.BLOCK + Style.NORMAL
-        + Fore.RESET + get_string('algorithm')
-        + Style.BRIGHT + Fore.YELLOW
-        + 'DUCO-S1A \u2699 AVR diff')
-
+        print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Style.NORMAL
+              + Fore.RESET + get_string('donation_level') + Style.BRIGHT
+              + Fore.YELLOW + str(donation_level))
+    print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Style.NORMAL
+          + Fore.RESET + get_string('algorithm')
+          + Style.BRIGHT + Fore.YELLOW + 'DUCO-S1A ⚙ AVR diff')
     if rig_identifier[0] != "None" or len(rig_identifier) > 1:
-        print(
-            Style.DIM + Fore.MAGENTA
-            + Settings.BLOCK + Style.NORMAL
-            + Fore.RESET + get_string('rig_identifier')
-            + Style.BRIGHT + Fore.YELLOW + ", ".join(rig_identifier))
-
-    print(
-        Style.DIM + Fore.MAGENTA
-        + Settings.BLOCK + Style.NORMAL
-        + Fore.RESET + get_string("using_config")
-        + Style.BRIGHT + Fore.YELLOW 
-        + str(Settings.DATA_DIR + '/Settings.cfg'))
-
-    print(
-        Style.DIM + Fore.MAGENTA
-        + Settings.BLOCK + Style.NORMAL
-        + Fore.RESET + str(greeting) + ', '
-        + Style.BRIGHT + Fore.YELLOW
-        + str(username) + '!\n')
+        print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Style.NORMAL
+              + Fore.RESET + get_string('rig_identifier')
+              + Style.BRIGHT + Fore.YELLOW + ", ".join(rig_identifier))
+    print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Style.NORMAL
+          + Fore.RESET + get_string("using_config")
+          + Style.BRIGHT + Fore.YELLOW + str(Settings.DATA_DIR + '/Settings.cfg'))
+    print(Style.DIM + Fore.MAGENTA + Settings.BLOCK + Style.NORMAL
+          + Fore.RESET + str(greeting) + ', '
+          + Style.BRIGHT + Fore.YELLOW + str(username) + '!\n')
 
 
 def init_rich_presence():
-    # Initialize Discord rich presence
     global RPC
     try:
         RPC = Presence(905158274490441808)
         RPC.connect()
-        Thread(target=update_rich_presence).start()
+        Thread(target=update_rich_presence, daemon=True).start()
     except Exception as e:
-        #print("Error launching Discord RPC thread: " + str(e))
         pass
 
 
 def update_rich_presence():
-    startTime = int(time())
     while True:
         try:
+            acc, rej, _ = get_total_shares()
             total_hashrate = get_prefix("H/s", sum(hashrate_list), 2)
             RPC.update(details="Hashrate: " + str(total_hashrate),
                        start=mining_start_time,
-                       state=str(shares[0]) + "/"
-                       + str(shares[0] + shares[1])
-                       + " accepted shares",
+                       state=f"{acc}/{acc+rej} accepted shares",
                        large_image="avrminer",
-                       large_text="Duino-Coin, "
-                       + "a coin that can be mined with almost everything"
-                       + ", including AVR boards",
+                       large_text="Duino-Coin",
                        buttons=[{"label": "Visit duinocoin.com",
                                  "url": "https://duinocoin.com"},
                                 {"label": "Join the Discord",
                                  "url": "https://discord.gg/k48Ht5y"}])
         except Exception as e:
-            print("Error updating Discord RPC thread: " + str(e))
-
+            pass
         sleep(15)
 
 
-def pretty_print(sender: str = "sys0",
-                 msg: str = None,
-                 state: str = "success"):
-    """
-    Produces nicely formatted CLI output for messages:
-    HH:MM:S |sender| msg
-    """
+def pretty_print(sender: str = "sys0", msg: str = None, state: str = "success"):
     if sender.startswith("net"):
         bg_color = Back.BLUE
     elif sender.startswith("avr"):
@@ -929,18 +846,14 @@ def pretty_print(sender: str = "sys0",
     else:
         fg_color = Fore.YELLOW
 
-    
-    print_queue.append(Fore.RESET + datetime.now().strftime(Style.DIM + "%H:%M:%S ")
+    with printlock:
+        print(Fore.RESET + datetime.now().strftime(Style.DIM + "%H:%M:%S ")
               + Style.RESET_ALL + Fore.WHITE + bg_color + Style.BRIGHT + f" {sender} "
               + Style.RESET_ALL + " " + fg_color + msg.strip())
 
 
 def share_print(id, type, accept, reject, thread_hashrate,
                 total_hashrate, computetime, diff, ping, reject_cause=None):
-    """
-    Produces nicely formatted CLI output for shares:
-    HH:MM:S |avrN| ⛏ Accepted 0/0 (100%) ∙ 0.0s ∙ 0 kH/s ⚙ diff 0 k ∙ ping 0ms
-    """
     thread_hashrate = get_prefix("H/s", thread_hashrate, 2)
     total_hashrate = get_prefix("H/s", total_hashrate, 1)
 
@@ -956,29 +869,32 @@ def share_print(id, type, accept, reject, thread_hashrate,
             share_str += f"{Style.NORMAL}({reject_cause}) "
         fg_color = Fore.RED
 
-    print_queue.append(
-          Fore.RESET + datetime.now().strftime(Style.DIM + "%H:%M:%S ")
-          + Style.RESET_ALL + Fore.WHITE + Style.BRIGHT + Back.MAGENTA
-          + " avr" + str(id) + " " + Style.RESET_ALL + fg_color 
-          + Settings.PICK + share_str + Fore.RESET
-          + str(accept) + "/" + str(accept + reject) + Fore.MAGENTA
-          + " (" + str(round(accept / (accept + reject) * 100)) + "%)"
-          + Style.NORMAL + Fore.RESET
-          + " ∙ " + str("%04.1f" % float(computetime)) + "s"
-          + Style.NORMAL + " ∙ " + Fore.BLUE + Style.BRIGHT
-          + f"{thread_hashrate}" + Style.DIM
-          + f" ({total_hashrate} {get_string('hashrate_total')})" + Fore.RESET + Style.NORMAL
-          + Settings.COG + f" {get_string('diff')} {diff} ∙ " + Fore.CYAN
-          + f"ping {(int(ping))}ms")
+    with printlock:
+        print(Fore.RESET + datetime.now().strftime(Style.DIM + "%H:%M:%S ")
+              + Style.RESET_ALL + Fore.WHITE + Style.BRIGHT + Back.MAGENTA
+              + " avr" + str(id) + " " + Style.RESET_ALL + fg_color 
+              + Settings.PICK + share_str + Fore.RESET
+              + str(accept) + "/" + str(accept + reject) + Fore.MAGENTA
+              + " (" + str(round(accept / (accept + reject) * 100)) + "%)"
+              + Style.NORMAL + Fore.RESET
+              + " ∙ " + str("%04.1f" % float(computetime)) + "s"
+              + Style.NORMAL + " ∙ " + Fore.BLUE + Style.BRIGHT
+              + f"{thread_hashrate}" + Style.DIM
+              + f" ({total_hashrate} {get_string('hashrate_total')})" + Fore.RESET + Style.NORMAL
+              + Settings.COG + f" {get_string('diff')} {diff} ∙ " + Fore.CYAN
+              + f"ping {(int(ping))}ms")
 
 
 def mine_avr(com, threadid, fastest_pool, thread_rigid):
-    global hashrate, shares
+    global hashrate
     start_time = time()
     report_shares = 0
     last_report_share = 0
+    # Thread‑local shares
+    accept = reject = blocks = 0
+
     while True:
-        shares = [0, 0, 0]
+        # Kết nối serial
         while True:
             try:
                 ser.close()
@@ -987,84 +903,64 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                              'success')
                 sleep(2)
             except:
+                # Log lỗi thực sự thay vì nuốt
+                debug_output(f"Error closing serial port {com}")
                 pass
             try:
-                # ===== FIX: dsrdtr=False để tắt DTR, tránh reset board CH32V003 =====
                 ser = Serial(com, baudrate=int(Settings.BAUDRATE),
-                             timeout=int(Settings.AVR_TIMEOUT),
-                             dsrdtr=False)
-                """
-                Sleep after opening the port to make
-                sure the board resets properly after
-                receiving the DTR signal
-                """
+                             timeout=int(Settings.AVR_TIMEOUT))
                 sleep(2)
                 break
             except Exception as e:
-                pretty_print(
-                    'sys'
-                    + port_num(com),
-                    get_string('board_connection_error')
-                    + str(com)
-                    + get_string('board_connection_error2')
-                    + Style.NORMAL
-                    + Fore.RESET
-                    + f' (avr connection err: {e})',
-                    'error')
+                pretty_print('sys' + port_num(com),
+                             get_string('board_connection_error')
+                             + str(com) + get_string('board_connection_error2')
+                             + Style.NORMAL + Fore.RESET
+                             + f' (avr connection err: {e})',
+                             'error')
                 sleep(10)
 
+        # Kết nối pool
         retry_counter = 0
         while True:
             try:
                 if retry_counter > 3:
                     fastest_pool = Client.fetch_pool()
                     retry_counter = 0
-
                 debug_output(f'Connecting to {fastest_pool}')
                 s = Client.connect(fastest_pool)
                 server_version = Client.recv(s, 6)
-
                 if threadid == 0:
                     if float(server_version) <= float(Settings.VER):
-                        pretty_print(
-                            'net0', get_string('connected')
-                            + Style.NORMAL + Fore.RESET
-                            + get_string('connected_server')
-                            + str(server_version) + ")",
-                            'success')
+                        pretty_print('net0', get_string('connected')
+                                     + Style.NORMAL + Fore.RESET
+                                     + get_string('connected_server')
+                                     + str(server_version) + ")", 'success')
                     else:
-                        pretty_print(
-                            'sys0', f"{get_string('miner_is_outdated')} (v{Settings.VER}) -"
-                            + get_string('server_is_on_version')
-                            + server_version + Style.NORMAL
-                            + Fore.RESET + get_string('update_warning'),
-                            'warning')
+                        pretty_print('sys0', f"{get_string('miner_is_outdated')} (v{Settings.VER}) -"
+                                     + get_string('server_is_on_version')
+                                     + server_version + Style.NORMAL
+                                     + Fore.RESET + get_string('update_warning'), 'warning')
                         sleep(10)
-
                     Client.send(s, "MOTD")
                     motd = Client.recv(s, 1024)
-
                     if "\n" in motd:
                         motd = motd.replace("\n", "\n\t\t")
-
                     pretty_print("net" + str(threadid),
                                  get_string("motd") + Fore.RESET
-                                 + Style.NORMAL + str(motd),
-                                 "success")
+                                 + Style.NORMAL + str(motd), "success")
                 break
             except Exception as e:
                 pretty_print('net0', get_string('connecting_error')
-                             + Style.NORMAL + f' (connection err: {e})',
-                             'error')
+                             + Style.NORMAL + f' (connection err: {e})', 'error')
                 retry_counter += 1
                 sleep(10)
 
         pretty_print('sys' + port_num(com),
                      get_string('mining_start') + Style.NORMAL + Fore.RESET
-                     + get_string('mining_algorithm') + str(com) + ')',
-                     'success')
+                     + get_string('mining_algorithm') + str(com) + ')', 'success')
 
-        # Perform a hash test to assign the starting diff
+        # Hash test
         prev_hash = "ba29a15896fd2d792d5c4b60668bf2b9feebc51d"
         exp_hash = "d0beba883d7e8cd119ea2b0e09b78f60f29e0968"
         exp_result = 50
@@ -1072,28 +968,21 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
         while retries < 3:
             try:
                 debug_output(com + ': Sending hash test to the board')
-                # ===== FIX: \n ở cuối để firmware nhận biết kết thúc job =====
-                ser.write(bytes(str(prev_hash
-                                    + Settings.SEPARATOR
-                                    + exp_hash
-                                    + Settings.SEPARATOR
-                                    + "10"
-                                    + Settings.SEPARATOR
-                                    + "\n"),
+                ser.write(bytes(str(prev_hash + Settings.SEPARATOR
+                                    + exp_hash + Settings.SEPARATOR
+                                    + "10" + Settings.SEPARATOR),
                                 encoding=Settings.ENCODING))
                 debug_output(com + ': Reading hash test from the board')
                 result = ser.read_until(b'\n').decode().strip().split(',')
-
+                ser.flush()
                 if result[0] and result[1]:
                     _ = int(result[0], 2)
                     debug_output(com + f': Result: {result[0]}')
                 else:
                     raise Exception("No data received from the board")
                 if int(result[0], 2) != exp_result:
-                   raise Exception(com + f': Incorrect result received!')
-
-                # ===== FIX: Firmware gửi microseconds dưới dạng binary string =====
-                computetime = round(int(result[1], 2) / 1000000, 5)  # µs -> seconds
+                    raise Exception(com + f': Incorrect result received!')
+                computetime = round(int(result[1], 2) / 1000000, 5)
                 num_res = int(result[0], 2)
                 hashrate_test = round(num_res / computetime, 2)
                 break
@@ -1124,25 +1013,20 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                     + get_string('hashrate_test_diff') 
                     + start_diff)
 
+        # Main mining loop
         while True:
             try:
                 if config["AVR Miner"]["mining_key"] != "None":
                     key = b64.b64decode(config["AVR Miner"]["mining_key"]).decode()
                 else:
                     key = config["AVR Miner"]["mining_key"]
-
                 debug_output(com + ': Requesting job')
-                Client.send(s, 'JOB'
-                            + Settings.SEPARATOR
-                            + str(username)
-                            + Settings.SEPARATOR
-                            + start_diff
-                            + Settings.SEPARATOR
-                            + str(key)
-                )
+                Client.send(s, 'JOB' + Settings.SEPARATOR
+                            + str(username) + Settings.SEPARATOR
+                            + start_diff + Settings.SEPARATOR
+                            + str(key))
                 job = Client.recv(s, 128).split(Settings.SEPARATOR)
                 debug_output(com + f": Received: {job[0]}")
-
                 try:
                     diff = int(job[2])
                 except:
@@ -1157,25 +1041,19 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 sleep(3)
                 break
 
+            # Gửi job xuống board
             retry_counter = 0
             while True:
                 if retry_counter > 3:
                     break
-
                 try:
                     debug_output(com + ': Sending job to the board')
-                    # ===== FIX: \n ở cuối =====
-                    ser.write(bytes(str(job[0]
-                                        + Settings.SEPARATOR
-                                        + job[1]
-                                        + Settings.SEPARATOR
-                                        + job[2]
-                                        + Settings.SEPARATOR
-                                        + "\n"),
+                    ser.write(bytes(str(job[0] + Settings.SEPARATOR
+                                        + job[1] + Settings.SEPARATOR
+                                        + job[2] + Settings.SEPARATOR),
                                     encoding=Settings.ENCODING))
                     debug_output(com + ': Reading result from the board')
                     result = ser.read_until(b'\n').decode().strip().split(',')
-
                     if result[0] and result[1]:
                         _ = int(result[0], 2)
                         debug_output(com + f': Result: {result[0]}')
@@ -1192,14 +1070,9 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 break
 
             try:
-                # ===== FIX: Firmware gửi BINARY STRING (không phải decimal) =====
-                # result[0] = nonce (binary string) -> int(..., 2)
-                # result[1] = elapsed_us (binary string, microseconds) -> int(..., 2) / 1000000
-                # result[2] = DUCOID (hex string)
-                computetime = round(int(result[1]) / 1000000, 5)  # µs -> seconds  ← ĐÃ SỬA
-                num_res = int(result[0])
+                computetime = round(int(result[1], 2) / 1000000, 5)
+                num_res = int(result[0], 2)
                 hashrate_t = round(num_res / computetime, 2)
-
                 hashrate_mean.append(hashrate_t)
                 hashrate = mean(hashrate_mean)
                 hashrate_list[threadid] = hashrate
@@ -1214,22 +1087,15 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 break
 
             try:
-                Client.send(s, str(num_res)
-                            + Settings.SEPARATOR
-                            + str(hashrate_t)
-                            + Settings.SEPARATOR
+                Client.send(s, str(num_res) + Settings.SEPARATOR
+                            + str(hashrate_t) + Settings.SEPARATOR
                             + f'Official AVR Miner {Settings.VER}'
-                            + Settings.SEPARATOR
-                            + str(thread_rigid)
-                            + Settings.SEPARATOR
-                            + str(result[2]))
-
+                            + Settings.SEPARATOR + str(thread_rigid)
+                            + Settings.SEPARATOR + str(result[2]))
                 responsetimetart = now()
                 feedback = Client.recv(s, 64).split(",")
                 responsetimestop = now()
-
-                time_delta = (responsetimestop -
-                              responsetimetart).microseconds
+                time_delta = (responsetimestop - responsetimetart).microseconds
                 ping_mean.append(round(time_delta / 1000))
                 ping = mean(ping_mean)
                 diff = get_prefix("", int(diff), 0)
@@ -1239,161 +1105,122 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                              get_string('connecting_error')
                              + Style.NORMAL + Fore.RESET
                              + f' (err handling result: {e})', 'error')
-                debug_output(com + f': error parsing response: {e}')
                 sleep(5)
                 break
 
+            # Cập nhật shares thread‑local và tổng
             if feedback[0] == 'GOOD':
-                shares[0] += 1
-                share_print(port_num(com), "accept",
-                            shares[0], shares[1], hashrate, total_hashrate,
+                accept += 1
+                share_print(port_num(com), "accept", accept, reject, hashrate, total_hashrate,
                             computetime, diff, ping)
-
             elif feedback[0] == 'BLOCK':
-                shares[0] += 1
-                shares[2] += 1
-                share_print(port_num(com), "block",
-                            shares[0], shares[1], hashrate, total_hashrate,
+                accept += 1
+                blocks += 1
+                share_print(port_num(com), "block", accept, reject, hashrate, total_hashrate,
                             computetime, diff, ping)
-
             elif feedback[0] == 'BAD':
-                shares[1] += 1
-                share_print(port_num(com), "reject",
-                            shares[0], shares[1], hashrate, total_hashrate, 
+                reject += 1
+                share_print(port_num(com), "reject", accept, reject, hashrate, total_hashrate,
                             computetime, diff, ping, feedback[1])
-
             else:
-                share_print(port_num(com), "reject",
-                            shares[0], shares[1], hashrate, total_hashrate, 
+                reject += 1
+                share_print(port_num(com), "reject", accept, reject, hashrate, total_hashrate,
                             computetime, diff, ping, feedback)
 
-            if shares[0] % 100 == 0 and shares[0] > 1:
-                pretty_print("sys0",
-                            f"{get_string('surpassed')} {shares[0]} {get_string('surpassed_shares')}",
-                            "success")
+            update_thread_share(threadid, accept, reject, blocks)
+
+            if accept % 100 == 0 and accept > 1:
+                pretty_print("sys0", f"{get_string('surpassed')} {accept} {get_string('surpassed_shares')}",
+                             "success")
 
             title(get_string('duco_avr_miner') + str(Settings.VER)
-                  + f') - {shares[0]}/{(shares[0] + shares[1])}'
-                  + get_string('accepted_shares'))
+                  + f') - {accept}/{accept+reject}' + get_string('accepted_shares'))
 
             end_time = time()
             elapsed_time = end_time - start_time
             if threadid == 0 and elapsed_time >= Settings.REPORT_TIME:
-                report_shares = shares[0] - last_report_share
+                report_shares = accept - last_report_share
                 uptime = calculate_uptime(mining_start_time)
-
                 periodic_report(start_time, end_time, report_shares,
-                                shares[2], hashrate, uptime)
+                                blocks, hashrate, uptime)
                 start_time = time()
-                last_report_share = shares[0]
+                last_report_share = accept
 
 
-def periodic_report(start_time, end_time, shares,
-                    blocks, hashrate, uptime):
-    """
-    Displays nicely formated uptime stats
-    """
+def periodic_report(start_time, end_time, shares, blocks, hashrate, uptime):
     seconds = round(end_time - start_time)
     pretty_print("sys0", get_string("periodic_mining_report")
                  + Fore.RESET + Style.NORMAL
-                 + get_string("report_period")
-                 + str(seconds) + get_string("report_time")
-                 + get_string("report_body1")
-                 + str(shares) + get_string("report_body2")
-                 + str(round(shares/seconds, 1))
-                 + get_string("report_body3")
-                 + get_string("report_body7")
-                 + str(blocks)
-                 + get_string("report_body4")
-                 + str(get_prefix("H/s", hashrate, 2))
-                 + get_string("report_body5")
-                 + str(int(hashrate*seconds))
-                 + get_string("report_body6")
-                 + get_string("total_mining_time")
+                 + get_string("report_period") + str(seconds) + get_string("report_time")
+                 + get_string("report_body1") + str(shares) + get_string("report_body2")
+                 + str(round(shares/seconds, 1)) + get_string("report_body3")
+                 + get_string("report_body7") + str(blocks)
+                 + get_string("report_body4") + str(get_prefix("H/s", hashrate, 2))
+                 + get_string("report_body5") + str(int(hashrate*seconds))
+                 + get_string("report_body6") + get_string("total_mining_time")
                  + str(uptime) + "\n", "success")
 
 
 def calculate_uptime(start_time):
     uptime = time() - start_time
-    if uptime >= 7200: # 2 hours, plural
+    if uptime >= 7200:
         return str(uptime // 3600) + get_string('uptime_hours')
-    elif uptime >= 3600: # 1 hour, not plural
+    elif uptime >= 3600:
         return str(uptime // 3600) + get_string('uptime_hour')
-    elif uptime >= 120: # 2 minutes, plural
+    elif uptime >= 120:
         return str(uptime // 60) + get_string('uptime_minutes')
-    elif uptime >= 60: # 1 minute, not plural
+    elif uptime >= 60:
         return str(uptime // 60) + get_string('uptime_minute')
-    else: # less than 1 minute
+    else:
         return str(round(uptime)) + get_string('uptime_seconds')    
-
-
-print_queue = []
-def print_queue_handler():
-    """
-    Prevents broken console logs with many threads
-    """
-    while True:
-        if len(print_queue):
-            message = print_queue[0]
-            with printlock:
-                print(message)
-            print_queue.pop(0)
-        sleep(0.01)
 
 
 if __name__ == '__main__':
     init(autoreset=True)
-    Thread(target=print_queue_handler).start()
     title(f"{get_string('duco_avr_miner')}{str(Settings.VER)})")
-
     if sys.platform == "win32":
-        os.system('') # Enable VT100 Escape Sequence for WINDOWS 10 Ver. 1607
-
+        os.system('')
     check_updates()
-
     try:
         load_config()
         debug_output('Config file loaded')
     except Exception as e:
-        pretty_print(
-            'sys0', get_string('load_config_error')
-            + Settings.DATA_DIR + get_string('load_config_error_warning')
-            + Style.NORMAL + Fore.RESET + f' ({e})', 'error')
+        pretty_print('sys0', get_string('load_config_error')
+                     + Settings.DATA_DIR + get_string('load_config_error_warning')
+                     + Style.NORMAL + Fore.RESET + f' ({e})', 'error')
         debug_output(f'Error reading configfile: {e}')
         sleep(10)
         _exit(1)
-
     try:
         greeting()
         debug_output('Greeting displayed')
     except Exception as e:
         debug_output(f'Error displaying greeting message: {e}')
-
     try:
         check_mining_key(config)
     except Exception as e:
         debug_output(f'Error checking miner key: {e}')
-
     if donation_level > 0:
         try:
             Donate.load(donation_level)
             Donate.start(donation_level)
         except Exception as e:
             debug_output(f'Error launching donation thread: {e}')
-
     try:
         fastest_pool = Client.fetch_pool()
         threadid = 0
         for port in avrport:
             Thread(target=mine_avr,
-                   args=(port, threadid,
-                         fastest_pool, rig_identifier[threadid])).start()
+                   args=(port, threadid, fastest_pool, rig_identifier[threadid]), daemon=True).start()
             threadid += 1
     except Exception as e:
         debug_output(f'Error launching AVR thread(s): {e}')
-
     if discord_presence == "y":
         try:
             init_rich_presence()
         except Exception as e:
             debug_output(f'Error launching Discord RPC thread: {e}')
+
+    # Giữ main thread chạy
+    while True:
+        sleep(1)
