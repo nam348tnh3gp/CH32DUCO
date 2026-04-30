@@ -40,6 +40,7 @@ _start:
 
 /* ===== SysTick Handler – increment tick_ms ===== */
     .section .text.SysTick_Handler, "ax"
+    .weak   SysTick_Handler          ; <<< THÊM DÒNG NÀY
     .globl  SysTick_Handler
     .type   SysTick_Handler, @function
 
