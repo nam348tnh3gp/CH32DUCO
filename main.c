@@ -39,7 +39,7 @@
 
 // Globals
 static char ducoid[23];
-volatile uint32_t sys_uptime_ms = 0;
+volatile uint32_t tick_ms = 0;   // <<< ĐỔI TÊN THÀNH tick_ms
 
 // HEX LUT
 static const uint8_t hex_lut[256] = {
@@ -48,6 +48,14 @@ static const uint8_t hex_lut[256] = {
     ['a']=10,['b']=11,['c']=12,['d']=13,['e']=14,['f']=15,
     ['A']=10,['B']=11,['C']=12,['D']=13,['E']=14,['F']=15,
 };
+
+// memcpy implementation (tránh undefined reference)
+void *memcpy(void *dest, const void *src, unsigned int n) {
+    char *d = (char *)dest;
+    const char *s = (const char *)src;
+    while (n--) *d++ = *s++;
+    return dest;
+}
 
 // System init
 static void SystemClock_Init(void) {
@@ -74,8 +82,7 @@ static void USART1_Init(uint32_t baud) {
 }
 
 // SysTick with 1ms interrupt
-void SysTick_Handler(void) __attribute__((interrupt));
-void SysTick_Handler(void) { sys_uptime_ms++; }
+// <<< XÓA 2 DÒNG SysTick_Handler Ở ĐÂY, STARTUP SẼ LO
 
 static void SysTick_Init(void) {
     STK_LOAD = 48000u - 1u;
@@ -83,19 +90,23 @@ static void SysTick_Init(void) {
     STK_CTRL = (1u << 2) | (1u << 1) | (1u << 0);
 }
 
+// Đọc an toàn chống torn read
 static uint32_t millis(void) {
-    return sys_uptime_ms;   // atomic read on RV32
+    uint32_t ms1 = tick_ms;
+    uint32_t ms2 = tick_ms;
+    if (ms1 == ms2) return ms1;
+    return tick_ms;
 }
 
 static uint32_t micros(void) {
     uint32_t val1 = STK_VAL;
-    uint32_t ms   = sys_uptime_ms;
+    uint32_t ms   = tick_ms;
     uint32_t val2 = STK_VAL;
 
     if (val2 > val1) {
         // không có wrap
     } else {
-        ms   = sys_uptime_ms;   // wrap đã xảy ra, đọc lại
+        ms   = tick_ms;      // wrap đã xảy ra, đọc lại
         val2 = STK_VAL;
     }
     uint32_t ticks = STK_LOAD - val2;
@@ -156,19 +167,22 @@ static void hex_to_words(const char *hex, uint32_t words[5]) {
     }
 }
 
-// Fast decimal conversion (no division)
+// Fast decimal conversion (no division) - sửa buffer 11 byte
 static uint8_t uint32_to_dec_fast(uint32_t num, char *buf) {
-    static const uint32_t pow10[] = {10000, 1000, 100, 10, 1};
+    static const uint32_t pow10[] = {
+        1000000000, 100000000, 10000000, 1000000,
+        100000, 10000, 1000, 100, 10, 1
+    };
     uint8_t len = 0;
     uint8_t started = 0;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 10; i++) {
         uint32_t p = pow10[i];
         uint8_t digit = 0;
         while (num >= p) {
             num -= p;
             digit++;
         }
-        if (digit > 0 || started || i == 4) {
+        if (digit > 0 || started || i == 9) {
             buf[len++] = '0' + digit;
             started = 1;
         }
@@ -204,13 +218,13 @@ static void sha1_transform(uint32_t state[5], const uint8_t block[64]) {
     state[0]+=a; state[1]+=b; state[2]+=c; state[3]+=d; state[4]+=e;
 }
 
-// DUCO-S1A hash (single block)
+// DUCO-S1A hash (single block) - buffer 11 byte an toàn
 static void ducos1a_hash(const char *prevHash, uint32_t nonce, uint32_t output[5]) {
     uint8_t block[64];
     uint32_t state[5] = {0x67452301u,0xEFCDAB89u,0x98BADCFEu,0x10325476u,0xC3D2E1F0u};
 
     for (int i=0; i<40; i++) block[i] = (uint8_t)prevHash[i];
-    char nonce_str[6];
+    char nonce_str[11];   // <<< TĂNG LÊN 11
     uint8_t nonce_len = uint32_to_dec_fast(nonce, nonce_str);
     for (int i=0; i<nonce_len; i++) block[40+i] = nonce_str[i];
     uint8_t total = 40 + nonce_len;
